@@ -26,14 +26,16 @@
     return [Math.cos(el) * Math.sin(az), Math.sin(el), Math.cos(el) * Math.cos(az)];
   }
 
-  function makeCamera(yawDeg, pitchDeg, aspect) {
-    var target = [0, -0.15, 0], dist = 4.1;
+  function makeCamera(yawDeg, pitchDeg, aspect, dist) {
+    var target = [0, -0.15, 0];
+    dist = dist || 4.1;
     var d = dirFromAngles(yawDeg, pitchDeg);
     var pos = add(target, mul(d, dist));
     var fwd = norm(sub(target, pos));
     var right = norm(cross(fwd, [0, 1, 0]));
     var up = cross(right, fwd);
-    var tanF = Math.tan(19 * DEG);
+    /* keep the horizontal field of view in tall panels */
+    var tanF = Math.tan(19 * DEG) * ((aspect || 1) < 1.25 ? 1.25 / (aspect || 1) : 1);
     return { pos: pos, fwd: fwd, right: right, up: up, tanF: tanF, aspect: aspect || 1 };
   }
 
@@ -83,7 +85,42 @@
     return { t: tmin, p: add(o, mul(d, tmin)), n: fromCube(n) };
   }
 
-  function hitObject(shape, o, d) { return shape === "cube" ? hitCube(o, d) : hitSphere(o, d); }
+  /* "trio": the main sphere plus two smaller spheres further back */
+  /* laid out to flank the main sphere from the default camera angle (yaw 25) */
+  var TRIO = (function () {
+    var y = 25 * Math.PI / 180, rx = Math.cos(y), rz = -Math.sin(y), bx = -Math.sin(y), bz = -Math.cos(y);
+    function at(x, back, r) { return [rx * x + bx * back, GROUND_Y + r, rz * x + bz * back, r]; }
+    return [[0, 0, 0, 1], at(-2.5, 1.8, 0.55), at(2.6, 2.6, 0.55)];
+  })();
+  function hitSphereAt(o, d, c) {
+    var r = c[3], oc = [(o[0] - c[0]) / r, (o[1] - c[1]) / r, (o[2] - c[2]) / r];
+    var h = hitSphere(oc, d);
+    if (!h) return null;
+    h.t *= r; h.p = add(o, mul(d, h.t));
+    return h;
+  }
+  function hitObject(shape, o, d) {
+    if (shape === "cube") return hitCube(o, d);
+    if (shape === "trio") {
+      var best = null;
+      for (var i = 0; i < TRIO.length; i++) { var h = hitSphereAt(o, d, TRIO[i]); if (h && (!best || h.t < best.t)) best = h; }
+      return best;
+    }
+    return hitSphere(o, d);
+  }
+  /* rough contact occlusion on the ground */
+  function groundAO(shape, p) {
+    if (shape === "trio") {
+      var ao = 1;
+      for (var i = 0; i < TRIO.length; i++) {
+        var c = TRIO[i], dx = p[0] - c[0], dz = p[2] - c[2], r = Math.sqrt(dx * dx + dz * dz);
+        ao *= 1 - 0.45 * Math.exp(-Math.max(0, r - c[3] * 0.55) * 2.4 / c[3]);
+      }
+      return ao;
+    }
+    var rr = Math.sqrt(p[0] * p[0] + p[2] * p[2]);
+    return 1 - 0.45 * Math.exp(-Math.max(0, rr - (shape === "cube" ? 0.9 : 0.55)) * 2.4);
+  }
 
   /* Environment radiance for a direction (also used as ambient light). */
   function env(S, d) {
@@ -98,41 +135,45 @@
     return add(add(mul(S.horizon, wH), mul(S.sky, wS)), mul(S.groundEnv, wG));
   }
 
-  /* Key light at point p: returns { L, rad } */
-  function keyLight(S, p) {
-    if (S.spot) {
-      var lp = mul(S.lightDir, 3.4);
+  /* A light at point p: returns { L, rad }. Lt = { dir, color (linear), intensity, spot } */
+  function lightAt(Lt, p) {
+    if (Lt.spot) {
+      var lp = mul(Lt.dir, 3.4);
       var toL = sub(lp, p), dist2 = dot(toL, toL), L = norm(toL);
       var axis = norm(mul(lp, -1));
       var cone = smooth(Math.cos(30 * DEG), Math.cos(16 * DEG), dot(mul(L, -1), axis));
       var fall = Math.min(2.2, (3.4 * 3.4) / dist2);
-      return { L: L, rad: mul(S.lightColor, S.intensity * cone * fall) };
+      return { L: L, rad: mul(Lt.color, Lt.intensity * cone * fall) };
     }
-    return { L: S.lightDir, rad: mul(S.lightColor, S.intensity) };
+    return { L: Lt.dir, rad: mul(Lt.color, Lt.intensity) };
   }
 
-  /* Shade the object surface. Returns { c: linear rgb, ndl } */
+  /* Shade the object surface. Returns { c: linear rgb, ndl (against the key light) } */
   function shadeObject(S, p, n, V, albedo) {
-    var kl = keyLight(S, p), L = kl.L;
-    var ndl = dot(n, L);
-    var w = S.subsurface * 0.6;
-    var dif;
-    if (S.toon) dif = ndl > 0.5 ? 1 : ndl > 0.02 ? 0.55 : 0;
-    else dif = Math.max(0, (ndl + w) / (1 + w));
+    var w = S.subsurface * 0.6, keyNdl = 0;
     var amb = mul(irradiance(S, n), S.ambient * (1 - 0.22 * Math.max(0, -n[1])));
-    var light = add(mul(kl.rad, dif), amb);
-    var c = mulv(albedo, light);
-    if (S.subsurface > 0) {
-      var term = Math.exp(-ndl * ndl * 10) * S.subsurface * 0.45;
-      var sat = mulv(albedo, albedo);
-      c = add(c, mul(mulv(sat, kl.rad), term));
-    }
-    if (S.specular > 0 && ndl > 0) {
-      var H = norm(add(L, V));
-      var shin = 10 + S.reflectivity * 140 + S.specular * 30;
-      var sp = Math.pow(Math.max(0, dot(n, H)), shin);
-      if (S.toon) sp = sp > 0.5 ? 1 : 0;
-      c = add(c, mul(kl.rad, sp * S.specular * (0.6 + S.reflectivity)));
+    var c = mulv(albedo, amb);
+    for (var i = 0; i < S.lights.length; i++) {
+      var Lt = S.lights[i];
+      if (Lt.intensity <= 0) continue;
+      var kl = lightAt(Lt, p), L = kl.L;
+      var ndl = dot(n, L);
+      if (i === 0) keyNdl = ndl;
+      var dif;
+      if (S.toon) dif = ndl > 0.5 ? 1 : ndl > 0.02 ? 0.55 : 0;
+      else dif = Math.max(0, (ndl + w) / (1 + w));
+      c = add(c, mulv(albedo, mul(kl.rad, dif)));
+      if (S.subsurface > 0) {
+        var term = Math.exp(-ndl * ndl * 10) * S.subsurface * 0.45;
+        c = add(c, mul(mulv(mulv(albedo, albedo), kl.rad), term));
+      }
+      if (S.specular > 0 && ndl > 0) {
+        var H = norm(add(L, V));
+        var shin = 10 + S.reflectivity * 140 + S.specular * 30;
+        var sp = Math.pow(Math.max(0, dot(n, H)), shin);
+        if (S.toon) sp = sp > 0.5 ? 1 : 0;
+        c = add(c, mul(kl.rad, sp * S.specular * (0.6 + S.reflectivity)));
+      }
     }
     if (S.reflectivity > 0) {
       var R = sub(mul(n, 2 * dot(n, V)), V);
@@ -142,17 +183,21 @@
       if (S.chrome) e = mulv(e, albedo);
       c = add(mul(c, 1 - k), mul(e, k * 1.1));
     }
-    return { c: c, ndl: ndl };
+    return { c: c, ndl: keyNdl };
   }
 
   function shadeGround(S, p, dist) {
-    var kl = keyLight(S, p);
-    var lit = Math.max(0, kl.L[1]);
-    var occ = hitObject(S.shape, add(p, [0, 1e-3, 0]), kl.L) ? 1 : 0;
-    var r = Math.sqrt(p[0] * p[0] + p[2] * p[2]);
-    var ao = 1 - 0.45 * Math.exp(-Math.max(0, r - (S.shape === "cube" ? 0.9 : 0.55)) * 2.4);
-    var keyAmt = Math.min(1, (kl.rad[0] + kl.rad[1] + kl.rad[2]) / 3) * Math.min(1, lit * 2.5) * (1 - occ);
-    var g = mul(S.ground, (0.5 + 0.5 * keyAmt) * ao);
+    var amt = 0;
+    for (var i = 0; i < S.lights.length; i++) {
+      var Lt = S.lights[i];
+      if (Lt.intensity <= 0) continue;
+      var kl = lightAt(Lt, p);
+      var lit = Math.max(0, kl.L[1]);
+      if (lit <= 0) continue;
+      var occ = hitObject(S.shape, add(p, [0, 1e-3, 0]), kl.L) ? 1 : 0;
+      amt += Math.min(1, (kl.rad[0] + kl.rad[1] + kl.rad[2]) / 3) * Math.min(1, lit * 2.5) * (1 - occ);
+    }
+    var g = mul(S.ground, (0.5 + 0.5 * Math.min(1.3, amt)) * groundAO(S.shape, p));
     var far = 1 - Math.exp(-Math.max(0, dist - 3) * 0.09);
     return lerp3(g, S.horizon, Math.min(1, far));
   }
@@ -188,13 +233,13 @@
   }
 
   /* Main render.
-   * S: scene (linear colors): albedo, sky, horizon, ground, groundEnv, lightDir, lightColor,
-   *    intensity, ambient, spot, specular, reflectivity, subsurface, toon, chrome, fog, contrast,
+   * S: scene (linear colors): albedo, sky, horizon, ground, groundEnv, lights,
+   *    lights: [{ dir, color, intensity, spot }], ambient, specular, reflectivity, subsurface, toon, chrome, fog, contrast,
    *    shape, yaw, pitch, split (null or 0..1), flatAlbedoRgb (sRGB 0..255)
    * Returns { rgb: Uint8Array, w, h, palette } */
   function render(S, w, h, ss) {
     ss = ss || 1;
-    var cam = makeCamera(S.yaw, S.pitch, w / h);
+    var cam = makeCamera(S.yaw, S.pitch, w / h, S.shape === "trio" ? 5.6 : 4.1);
     var out = new Uint8Array(w * h * 3);
     var buckets = { hi: [], mid: [], shadow: [], bounce: [] };
     var allLum = [];
@@ -241,7 +286,7 @@
     }
     var palette = {};
     var V = mul(cam.fwd, -1);
-    var Ld = S.lightDir;
+    var Ld = S.lights[0].dir;
     var fallbacks = {
       hi: norm(add(Ld, V)),
       mid: norm(add(mul(Ld, 0.5), mul(norm(cross(Ld, [0, 1, 0.001])), 0.87))),
@@ -264,9 +309,9 @@
   }
 
   /* Where to draw the light handle on screen (uv) */
-  function lightHandle(S, aspect) {
-    var cam = makeCamera(S.yaw, S.pitch, aspect || 1);
-    return project(cam, mul(S.lightDir, 1.75));
+  function lightHandle(S, aspect, i) {
+    var cam = makeCamera(S.yaw, S.pitch, aspect || 1, S.shape === "trio" ? 5.6 : 4.1);
+    return project(cam, mul(S.lights[i || 0].dir, 1.75));
   }
 
   var api = { render: render, dirFromAngles: dirFromAngles, lightHandle: lightHandle, makeCamera: makeCamera, project: project };

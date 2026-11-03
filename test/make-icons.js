@@ -5,7 +5,7 @@ globalThis.CPColor = require(path.join(dir, 'color.js'));
 const R = require(path.join(dir, 'render.js')), P = require(path.join(dir, 'png.js')), C = globalThis.CPColor;
 const lin = h => C.rgbToLinear(C.hexToRgb(h));
 function scene(){ return { albedo: lin('#D2643C'), sky: lin('#3A4A6A'), horizon: lin('#3A4A6A'), ground: lin('#2A2A33'), groundEnv: lin('#2A2A33'),
-  lightDir: R.dirFromAngles(50, 40), lightColor: lin('#FFF3E2'), intensity: 1.1, ambient: 0.6, spot:false, specular:0.5, reflectivity:0.1,
+  lights:[{dir: R.dirFromAngles(50, 40), color: lin('#FFF3E2'), intensity: 1.1, spot:false}], ambient: 0.6, specular:0.5, reflectivity:0.1,
   subsurface:0.2, toon:false, chrome:false, fog:0, contrast:1, shape:'sphere', yaw:20, pitch:5, split:null }; }
 const out = path.join(__dirname, '..', 'plugin', 'icons');
 for (const [name, size] of [['panel',23],['plugin',48]]) {

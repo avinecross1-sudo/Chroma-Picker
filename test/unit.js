@@ -25,7 +25,7 @@ ok(p===buf.length,'ase length');
 ok(SW.toGPL('X',[{name:'A',hex:'#0A0B0C'}]).includes(' 10  11  12\tA'),'gpl');
 // renderer sanity: sphere under white light, lit side brighter than shadow side, palette ordering
 const lin=h=>C.rgbToLinear(C.hexToRgb(h));
-const S={albedo:lin('#808080'),sky:lin('#8899BB'),horizon:lin('#CCCCCC'),ground:lin('#665544'),groundEnv:lin('#665544'),lightDir:R.dirFromAngles(30,40),lightColor:[1,1,1],intensity:1,ambient:0.5,spot:false,specular:0.3,reflectivity:0,subsurface:0,toon:false,chrome:false,fog:0,contrast:1,shape:'sphere',yaw:25,pitch:14,split:null};
+const S={albedo:lin('#808080'),sky:lin('#8899BB'),horizon:lin('#CCCCCC'),ground:lin('#665544'),groundEnv:lin('#665544'),lights:[{dir:R.dirFromAngles(30,40),color:[1,1,1],intensity:1,spot:false}],ambient:0.5,specular:0.3,reflectivity:0,subsurface:0,toon:false,chrome:false,fog:0,contrast:1,shape:'sphere',yaw:25,pitch:14,split:null};
 const lum=c=>C.luminance(c);
 for(const shape of ['sphere','cube']){ S.shape=shape; const r=R.render(S,120,100,1);
   ok(r.rgb.length===120*100*3,'size'); const pl=r.palette; ok(lum(pl.hi)>lum(pl.mid)&&lum(pl.mid)>lum(pl.shadow),shape+' palette order '+JSON.stringify(pl)); }
