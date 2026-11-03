@@ -125,11 +125,11 @@
     };
   }
 
-  /* Effective lighting, whether manual or time based. The fill light is never driven by time. */
+  /* Effective lighting, whether manual or time based. The fill light and the ground color are never driven by time. */
   function lighting() {
     if (state.lightMode === "time") {
       var t = timeOfDay(state.time);
-      return { sky: t.sky, horizon: t.horizon, ground: t.ground, light: t.light,
+      return { sky: t.sky, horizon: t.horizon, ground: state.colors.ground, light: t.light,
         intensity: state.intensity * t.intensity, ambient: state.ambient * t.ambientMul, az: t.az, el: t.el };
     }
     return { sky: state.colors.sky, horizon: state.colors.horizon, ground: state.colors.ground, light: state.colors.light,
@@ -140,7 +140,7 @@
   function bakeToManual() {
     if (state.lightMode !== "time") return;
     var t = timeOfDay(state.time);
-    state.colors.sky = t.sky; state.colors.horizon = t.horizon; state.colors.ground = t.ground; state.colors.light = t.light;
+    state.colors.sky = t.sky; state.colors.horizon = t.horizon; state.colors.light = t.light;
     state.az = t.az; state.el = t.el;
     state.intensity = state.intensity * t.intensity; state.ambient = state.ambient * t.ambientMul;
     state.lightMode = "manual";
@@ -285,7 +285,7 @@
   }
 
   function setTargetHex(target, hex, live) {
-    if (target !== "shape" && target !== "fill") bakeToManual();
+    if (target !== "shape" && target !== "fill" && target !== "ground") bakeToManual();
     state.colors[target] = hex;
     if (target === "shape") pushForeground(hex, false);
     refreshAll(!live);

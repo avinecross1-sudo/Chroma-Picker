@@ -159,7 +159,19 @@
     var wH = 0.32 * (1 - t * t);
     var wS = (1 - wH) * Math.max(0, 0.5 + 0.5 * t);
     var wG = (1 - wH) * Math.max(0, 0.5 - 0.5 * t);
-    return add(add(mul(S.horizon, wH), mul(S.sky, wS)), mul(S.groundLit, wG * S.bounce));
+    return add(mul(S.horizon, wH), mul(S.sky, wS));
+  }
+
+  /* Diffuse light bounced up from the ground. It lights the lower half of the subject in the ground's
+   * color whatever the reflectivity, and part of it ignores the base color so the tint always shows. */
+  function groundBounce(S, n, albedo, h) {
+    var down = Math.max(0, 0.5 - 0.5 * n[1]);
+    var wG = down * Math.sqrt(down) * 1.4;
+    if (wG <= 0 || !S.bounce) return [0, 0, 0];
+    var occl = 1 - 0.3 * Math.exp(-h * 3.2) * Math.max(0, -n[1]);
+    var src = lerp3(S.groundLit, S.ground, 0.55);
+    var alb = add(mul(albedo, 0.7), [0.12, 0.12, 0.12]);
+    return mul(mulv(alb, src), wG * S.bounce * (0.45 + S.ambient) * occl);
   }
 
   function lightAt(Lt, p) {
@@ -179,7 +191,7 @@
     var w = 0.12 + S.subsurface * 0.6, keyNdl = 0;
     var h = p[1] - GROUND_Y;
     var ao = 1 - 0.55 * Math.exp(-h * 3.2) * Math.max(0, -n[1]);
-    var c = mulv(albedo, mul(irradiance(S, n), S.ambient * ao));
+    var c = add(mulv(albedo, mul(irradiance(S, n), S.ambient * ao)), groundBounce(S, n, albedo, h));
     for (var i = 0; i < S.lights.length; i++) {
       var Lt = S.lights[i];
       if (Lt.intensity <= 0) continue;
