@@ -11,7 +11,7 @@
   function cls(el, name, on) { if (on) el.classList.add(name); else el.classList.remove(name); }
 
   /* ---------- storage (localStorage works in UXP; guarded anyway) ---------- */
-  var VER = "v2.";
+  var VER = "v3.";
   var store = {
     get: function (k, d) { try { var v = localStorage.getItem("chromaPicker." + VER + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
     set: function (k, v) { try { localStorage.setItem("chromaPicker." + VER + k, JSON.stringify(v)); } catch (e) { /* ignore */ } }
@@ -19,14 +19,15 @@
 
   /* ---------- state ---------- */
   var DEFAULTS = {
-    colors: { shape: "#D14949", sky: "#2F7BEA", horizon: "#A8CFE6", ground: "#4F7F62", light: "#FFF3E2", fill: "#9FC4FF" },
+    colors: { shape: "#5CC46A", sky: "#3D9BEA", horizon: "#E3DDF0", ground: "#8FB57A", light: "#FFF6E8", fill: "#9FC4FF" },
     bg: "#FFFFFF",
     shape: "trio", lightMode: "manual", spot: false,
-    az: -35, el: 38, intensity: 1.15,
-    fillOn: true, fillAz: 120, fillEl: 18, fillInt: 0.35,
-    time: 16, ambient: 0.45,
-    specular: 0.35, reflectivity: 0.08, subsurface: 0, fog: 0, contrast: 1, toon: false, chrome: false,
-    yaw: 25, pitch: 12
+    az: -45, el: 38, intensity: 1.35,
+    fillOn: false, fillAz: 120, fillEl: 18, fillInt: 0.3,
+    time: 10, ambient: 0.3,
+    sheen: 0.8, softness: 1,
+    specular: 0.3, reflectivity: 0, subsurface: 0, fog: 0, contrast: 1, toon: false, chrome: false,
+    yaw: 25, pitch: 7
   };
   var UNDO_KEYS = Object.keys(DEFAULTS);
   var SCENE_RESET_KEYS = ["az", "el", "fillAz", "fillEl", "yaw", "pitch"];
@@ -95,16 +96,16 @@
   /* ---------- time of day ---------- */
   var TOD = [
     // hour, sky, horizon, ground, sun color, intensity, ambient multiplier
-    [0, "#0B1024", "#1A2038", "#0D0E12", "#8DA2D8", 0.18, 0.55],
-    [5, "#18203F", "#3A3550", "#15141A", "#9AA8D8", 0.2, 0.6],
-    [6.5, "#5A6C9E", "#F0A070", "#3B3028", "#FF9A55", 0.55, 0.8],
-    [9, "#4F8FEA", "#C6DDEB", "#4E7558", "#FFE2BC", 0.95, 1],
-    [12, "#2F7BEA", "#A8CFE6", "#4F7F62", "#FFF8EE", 1.15, 1],
-    [15, "#3D84E8", "#B4D2E4", "#4C7A5C", "#FFEBD2", 1.05, 1],
-    [17.5, "#6E86C8", "#F2BC80", "#4A5B40", "#FFB066", 0.85, 0.9],
-    [19, "#4A4E86", "#E8785A", "#2E2E24", "#FF7040", 0.45, 0.75],
-    [20.5, "#1E2448", "#4A3A5A", "#16151A", "#9AA0D0", 0.22, 0.6],
-    [24, "#0B1024", "#1A2038", "#0D0E12", "#8DA2D8", 0.18, 0.55]
+    [0, "#1A1630", "#3A2E4A", "#262A24", "#B8C4F0", 0.55, 1.6],
+    [4.5, "#232444", "#4A4060", "#2C3226", "#B8C4F0", 0.55, 1.6],
+    [6, "#6E86B8", "#F2B48A", "#6B7A55", "#FFB27A", 0.7, 1.15],
+    [8.5, "#4A9AE6", "#E8DCEA", "#8AB278", "#FFF0DC", 0.95, 1],
+    [12, "#3D9BEA", "#E3DDF0", "#8FB57A", "#FFF8F0", 1, 1],
+    [15, "#4A92E2", "#E6DCE4", "#8AAE72", "#FFF0DE", 0.97, 1],
+    [17, "#5E6A84", "#F29A4A", "#7C7444", "#FFB45C", 0.85, 0.9],
+    [18.6, "#4D2030", "#A0605A", "#5E4628", "#FF8A55", 0.55, 0.8],
+    [20.2, "#3A1C30", "#5A3A4A", "#2E2A22", "#C0B8E0", 0.5, 1.5],
+    [24, "#1A1630", "#3A2E4A", "#262A24", "#B8C4F0", 0.55, 1.6]
   ];
   function mixHex(a, b, t) {
     var la = C.rgbToLinear(C.hexToRgb(a)), lb = C.rgbToLinear(C.hexToRgb(b));
@@ -114,9 +115,9 @@
     h = ((h % 24) + 24) % 24;
     var i = 0; while (i < TOD.length - 2 && TOD[i + 1][0] <= h) i++;
     var a = TOD[i], b = TOD[i + 1], t = (h - a[0]) / (b[0] - a[0]);
-    var day = h >= 6 && h <= 19;
-    var el = day ? Math.max(2, 72 * Math.sin(Math.PI * (h - 6) / 13)) : 38;
-    var az = day ? -105 + 210 * (h - 6) / 13 : 160;
+    var day = h >= 5.5 && h <= 19.5;
+    var el = day ? Math.max(3, 70 * Math.sin(Math.PI * (h - 5.5) / 14)) : 40;
+    var az = day ? -110 + 220 * (h - 5.5) / 14 : -60;
     return {
       sky: mixHex(a[1], b[1], t), horizon: mixHex(a[2], b[2], t), ground: mixHex(a[3], b[3], t),
       light: mixHex(a[4], b[4], t), intensity: lerp(a[5], b[5], t), ambientMul: lerp(a[6], b[6], t), el: el, az: az
@@ -156,6 +157,7 @@
       sky: lin(L.sky), horizon: lin(L.horizon), ground: lin(L.ground), groundEnv: lin(L.ground),
       lights: lights, ambient: L.ambient,
       specular: state.specular, reflectivity: state.reflectivity, subsurface: state.subsurface,
+      sheen: state.sheen, softness: state.softness,
       toon: state.toon, chrome: state.chrome, fog: state.fog, contrast: state.contrast,
       shape: state.shape, yaw: state.yaw, pitch: state.pitch,
       split: ui.trueColor ? ui.split : null
@@ -227,7 +229,7 @@
   }
 
   /* ---------- color access for the current target ---------- */
-  var TARGET_LABEL = { shape: "SHAPE COLOR", sky: "SKY COLOR", horizon: "HORIZON COLOR", ground: "GROUND COLOR", light: "KEY LIGHT COLOR", fill: "FILL LIGHT COLOR" };
+  var TARGET_LABEL = { shape: "SHAPE COLOR", sky: "SKY COLOR", horizon: "HORIZON COLOR", ground: "GROUND COLOR", light: "KEY LIGHT", fill: "FILL LIGHT" };
   var cache = { key: null, vals: null, hex: null };
 
   function hexOf(target) {
@@ -557,6 +559,7 @@
     var fieldVisible = ui.showField || ui.layout === "classic";
     $("fieldWrap").style.display = fieldVisible ? "flex" : "none";
     $("btnField").querySelector("img").src = fieldVisible ? "icons/ui/collapse.svg" : "icons/ui/chevron.svg";
+    $("lightIntRow").style.display = ui.target === "light" || ui.target === "fill" ? "block" : "none";
     $("timeSliders").style.opacity = state.lightMode === "time" ? "1" : "0.5";
     allSliders.forEach(function (s) { s.update(); });
     updateChannelGradients();
@@ -580,12 +583,16 @@
 
   /* ---------- presets ---------- */
   var BUILTIN = [
-    { name: "Clear day", lightMode: "manual", spot: false, az: -35, el: 38, intensity: 1.15, ambient: 0.45, fillOn: true, fillInt: 0.35, colors: { sky: "#2F7BEA", horizon: "#A8CFE6", ground: "#4F7F62", light: "#FFF3E2", fill: "#9FC4FF" } },
+    { name: "Clear day", lightMode: "manual", spot: false, az: -45, el: 38, intensity: 1.35, ambient: 0.3, fillOn: false, colors: { sky: "#3D9BEA", horizon: "#E3DDF0", ground: "#8FB57A", light: "#FFF6E8" } },
+    { name: "Green sky, sand", lightMode: "manual", spot: false, az: -45, el: 38, intensity: 1.35, ambient: 0.3, fillOn: false, colors: { sky: "#3C9A6C", horizon: "#D8F5C8", ground: "#FFFF7A", light: "#FFF6E8" } },
+    { name: "Amber sky, blue ground", lightMode: "manual", spot: false, az: -45, el: 38, intensity: 1.35, ambient: 0.3, fillOn: false, colors: { sky: "#8A6020", horizon: "#E0A070", ground: "#5AA0B8", light: "#FFF0DC" } },
+    { name: "Coral dusk, teal ground", lightMode: "manual", spot: false, az: -45, el: 30, intensity: 1.3, ambient: 0.32, fillOn: false, colors: { sky: "#88405A", horizon: "#F07858", ground: "#5E9088", light: "#FFE2CC" } },
+    { name: "Warm interior", lightMode: "manual", spot: false, az: -45, el: 40, intensity: 1.3, ambient: 0.3, fillOn: false, colors: { sky: "#4A2418", horizon: "#E07830", ground: "#FF8030", light: "#FFE6C8" } },
     { name: "Studio", lightMode: "manual", spot: true, az: 40, el: 45, intensity: 1.2, ambient: 0.35, fillOn: true, fillInt: 0.25, colors: { sky: "#9A9A9A", horizon: "#6E6E6E", ground: "#3A3A3A", light: "#FFFFFF", fill: "#FFFFFF" } },
     { name: "Overcast", lightMode: "manual", spot: false, az: 20, el: 70, intensity: 0.35, ambient: 0.9, fillOn: false, colors: { sky: "#C9CED6", horizon: "#B7BCC2", ground: "#5E5E58", light: "#F2F4F8" } },
-    { name: "Golden hour", lightMode: "time", time: 18, intensity: 1, ambient: 0.5 },
-    { name: "Midday sun", lightMode: "time", time: 12.5, intensity: 1, ambient: 0.5 },
-    { name: "Moonlight", lightMode: "time", time: 23, intensity: 1, ambient: 0.5 },
+    { name: "Golden hour", lightMode: "time", time: 17, intensity: 1.35, ambient: 0.3 },
+    { name: "Midday sun", lightMode: "time", time: 12, intensity: 1.35, ambient: 0.3 },
+    { name: "Moonlight", lightMode: "time", time: 23, intensity: 1.35, ambient: 0.3 },
     { name: "Rim light", lightMode: "manual", spot: false, az: 200, el: 25, intensity: 1.4, ambient: 0.3, fillOn: true, fillInt: 0.2, colors: { sky: "#33405A", horizon: "#4A4A5C", ground: "#1E1E24", light: "#BFE3FF", fill: "#FFB070" } },
     { name: "Campfire", lightMode: "manual", spot: true, az: -60, el: 8, intensity: 1.5, ambient: 0.25, fillOn: false, colors: { sky: "#0E1222", horizon: "#2A1E1C", ground: "#24170F", light: "#FF8A3A" } }
   ];
@@ -638,7 +645,7 @@
 
   function buildSliders() {
     $("timeSliders").innerHTML = ""; $("keySliders").innerHTML = ""; $("fillSliders").innerHTML = "";
-    $("ambientSliders").innerHTML = ""; $("materialSliders").innerHTML = ""; $("brushRow").innerHTML = "";
+    $("ambientSliders").innerHTML = ""; $("materialSliders").innerHTML = ""; $("brushRow").innerHTML = ""; $("lightIntRow").innerHTML = "";
     allSliders = [];
     addSlider("timeSliders", "Time", "time", 0, 24, 1, { time: true, unit: "h" });
     addSlider("keySliders", "Direction", "az", -180, 180, 0, { bake: true, unit: "°" });
@@ -648,8 +655,17 @@
     addSlider("fillSliders", "Height", "fillEl", -5, 89, 0, { unit: "°" });
     addSlider("fillSliders", "Intensity", "fillInt", 0, 1.5, 2);
     addSlider("ambientSliders", "Ambient", "ambient", 0, 1.5, 2);
-    [["Specular", "specular", 0, 1], ["Reflectivity", "reflectivity", 0, 1], ["Subsurface", "subsurface", 0, 1],
+    [["Sheen", "sheen", 0, 1.5], ["Shadow soft", "softness", 0, 3], ["Specular", "specular", 0, 1], ["Reflectivity", "reflectivity", 0, 1], ["Subsurface", "subsurface", 0, 1],
       ["Depth fog", "fog", 0, 1], ["Contrast", "contrast", 0.5, 1.6]].forEach(function (d) { addSlider("materialSliders", d[0], d[1], d[2], d[3], 2); });
+    /* shown in the color section while a light's color is being edited */
+    allSliders.push(makeSlider($("lightIntRow"), {
+      label: "Intensity", min: 0, max: 2, decimals: 2, step: 0.05,
+      get: function () { return ui.target === "fill" ? state.fillInt : state.intensity; },
+      set: function (v, live) {
+        if (ui.target === "fill") { state.fillInt = v; if (v > 0) state.fillOn = true; } else state.intensity = v;
+        refreshAll(!live);
+      }
+    }));
     allSliders.push(makeSlider($("brushRow"), {
       label: "Brush", min: 1, max: 500, step: 1, unit: "px", noUndo: true,
       get: function () { return ui.brush; },

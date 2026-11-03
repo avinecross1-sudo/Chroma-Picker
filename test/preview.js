@@ -1,6 +1,21 @@
-const path=require('path'),fs=require('fs'); const dir=path.join(__dirname,'..','plugin','js');
-const C=globalThis.CPColor=require(path.join(dir,'color.js')); const R=require(path.join(dir,'render.js')),P=require(path.join(dir,'png.js'));
-const lin=h=>C.rgbToLinear(C.hexToRgb(h)); const out=process.argv[2];
-const base={albedo:lin('#C8643C'),flatAlbedoRgb:[200,100,60],sky:lin('#86A9E0'),horizon:lin('#E6DCCB'),ground:lin('#6E6253'),groundEnv:lin('#6E6253'),lights:[{dir:R.dirFromAngles(-25,40),color:lin('#FFF3E2'),intensity:1.1,spot:false},{dir:R.dirFromAngles(140,25),color:lin('#9FC4FF'),intensity:0.35,spot:false}],ambient:0.4,specular:0.35,reflectivity:0.08,subsurface:0,toon:false,chrome:false,fog:0,contrast:1,shape:'sphere',yaw:25,pitch:18,split:null};
-const vars=[{},{shape:'cube'},{shape:'trio',sky:lin('#2E7BEA'),horizon:lin('#9EC9E8'),ground:lin('#5E8A6A'),groundEnv:lin('#5E8A6A'),albedo:lin('#D14949')},{toon:true},{shape:'trio'},{reflectivity:0.8,chrome:true}];
-vars.forEach((v,i)=>{const r=R.render(Object.assign({},base,v),280,220,2); fs.writeFileSync(out+'/r'+i+'.png',P.encode(r.rgb,280,220));});
+// Renders reference-style scenes to PNG for eyeballing the lighting.
+// Usage: node test/preview.js <outdir>
+const path = require('path'), fs = require('fs'); const dir = path.join(__dirname, '..', 'plugin', 'js');
+const C = globalThis.CPColor = require(path.join(dir, 'color.js'));
+const R = require(path.join(dir, 'render.js')), P = require(path.join(dir, 'png.js'));
+const lin = h => C.rgbToLinear(C.hexToRgb(h)); const out = process.argv[2] || '.';
+const base = { albedo: lin('#66D96A'), flatAlbedoRgb: [102, 217, 106], ambient: 0.3, specular: 0.3, reflectivity: 0, subsurface: 0,
+  toon: false, chrome: false, fog: 0, contrast: 1, shape: 'trio', yaw: 25, pitch: 7, split: null,
+  lights: [{ dir: R.dirFromAngles(-45, 38), color: lin('#FFF6E8'), intensity: 1.35, spot: false }] };
+const envs = [
+  ['emerald', '#3C9A6C', '#D8F5C8', '#FFFF7A'],
+  ['amber', '#8A6020', '#E0A070', '#5AA0B8'],
+  ['coral', '#88405A', '#F07858', '#5E9088'],
+  ['interior', '#4A2418', '#E07830', '#FF8030'],
+  ['sunny', '#3D9BEA', '#E3DDF0', '#8FB57A'],
+  ['sphere', '#3D9BEA', '#E3DDF0', '#8FB57A', { shape: 'sphere' }],
+];
+envs.forEach(([n, sky, hor, gr, extra]) => {
+  const S = Object.assign({}, base, { sky: lin(sky), horizon: lin(hor), ground: lin(gr) }, extra || {});
+  const r = R.render(S, 250, 250, 2); fs.writeFileSync(path.join(out, 'ref_' + n + '.png'), P.encode(r.rgb, 250, 250));
+});
