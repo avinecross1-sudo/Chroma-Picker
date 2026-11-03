@@ -167,10 +167,12 @@
 
   /* ---------- rendering ---------- */
   var renderPending = false, renderHQ = false, hqTimer = null, jobToken = 0;
+  var sharpKey = null, jobKey = null;
   var raf = window.requestAnimationFrame ? window.requestAnimationFrame.bind(window) : function (f) { return setTimeout(f, 16); };
 
-  /* Interactive frames are small and synchronous; the sharp frame is computed a few rows at a time
-   * between events, and is thrown away if anything changes before it finishes. */
+  /* Interactive frames are small and synchronous; the sharp frame is rendered at the panel's real pixel size,
+   * a few rows at a time between events, and is thrown away only if the scene actually changes.
+   * Requests that change nothing (UI toggles, host polling) keep the sharp frame on screen. */
   function requestRender(hq) {
     renderHQ = renderHQ || hq;
     if (renderPending) return;
@@ -178,10 +180,13 @@
     raf(function () {
       renderPending = false;
       var q = renderHQ; renderHQ = false;
-      jobToken++;
+      var S = sceneParams(), key = sceneKey(S);
+      if (key === sharpKey) { placeOverlay(S, lastRender ? lastRender.w / lastRender.h : 1); renderPalette(); return; }
+      if (key === jobKey) return;              /* the sharp frame for this exact scene is already on its way */
+      jobToken++; jobKey = null;
       clearTimeout(hqTimer);
-      if (q) startSharpRender();
-      else { renderPreview(); hqTimer = setTimeout(function () { requestRender(true); }, 160); }
+      if (q) startSharpRender(S, key);
+      else { renderPreview(S); hqTimer = setTimeout(function () { requestRender(true); }, 140); }
     });
   }
 
@@ -189,9 +194,14 @@
     var r = $("viewport").getBoundingClientRect();
     return { w: r.width || 300, h: r.height || 300 };
   }
-  function frameSize(base) {
+  function pixelRatio() { var d = window.devicePixelRatio; return d && d >= 1 ? Math.min(d, 3) : 2; }
+  function frameSize(wpx) {
+    var sz = viewSize(), w = Math.max(16, Math.round(wpx));
+    return { w: w, h: clamp(Math.round(w * sz.h / Math.max(1, sz.w)), 16, w * 3) };
+  }
+  function sceneKey(S) {
     var sz = viewSize();
-    return { w: base, h: clamp(Math.round(base * sz.h / Math.max(1, sz.w)), 40, base * 3) };
+    return ui.layout + "|" + Math.round(sz.w) + "x" + Math.round(sz.h) + "|" + JSON.stringify(S);
   }
   function showFrame(res, S) {
     lastRender = res;
@@ -201,20 +211,22 @@
     }
     renderPalette();
   }
-  function renderPreview() {
-    var S = sceneParams();
+  function renderPreview(S) {
+    sharpKey = null;
     if (ui.layout === "classic") { showFrame(R.render(S, 64, 64, 1), S); return; }
-    var f = frameSize(140);
+    var f = frameSize(clamp(viewSize().w * 0.6, 120, 260));
     showFrame(R.render(S, f.w, f.h, 1), S);
   }
-  function startSharpRender() {
-    var S = sceneParams();
-    if (ui.layout === "classic") { showFrame(R.render(S, 64, 64, 1), S); return; }
-    var f = frameSize(clamp(Math.round(viewSize().w), 200, 360));
-    var token = jobToken, job = R.renderJob(S, f.w, f.h, 2);
+  function startSharpRender(S, key) {
+    if (ui.layout === "classic") { showFrame(R.render(S, 64, 64, 1), S); sharpKey = key; return; }
+    /* one rendered pixel per screen pixel; supersample only when the panel is small */
+    var f = frameSize(clamp(viewSize().w * pixelRatio(), 200, 900));
+    var ss = f.w * f.h <= 160000 ? 2 : 1;
+    var token = jobToken, job = R.renderJob(S, f.w, f.h, ss);
+    jobKey = key;
     (function tick() {
       if (token !== jobToken) return;
-      if (job.step(14)) showFrame(job.result(), S);
+      if (job.step(14)) { jobKey = null; sharpKey = key; showFrame(job.result(), S); }
       else setTimeout(tick, 0);
     })();
   }

@@ -230,9 +230,11 @@
     return lerp3(g, S.horizon, Math.min(1, far));
   }
 
+  /* Depth fog starts at the main subject, so it stays clear and only what is behind it fades. */
   function fog(S, c, dist) {
     if (!S.fog) return c;
-    return lerp3(c, S.horizon, Math.min(1, S.fog * (dist / 7)));
+    var behind = Math.max(0, dist - (S.fogStart || 0));
+    return lerp3(c, S.horizon, Math.min(1, S.fog * (1 - Math.exp(-behind / 2.5))));
   }
 
   /* gentle shoulder so bright highlights roll off instead of clipping */
@@ -249,7 +251,7 @@
     var tg = d[1] < -1e-6 ? (GROUND_Y - cam.pos[1]) / d[1] : Infinity;
     if (h && h.t < tg) {
       var sh = shadeObject(S, h.p, h.n, mul(d, -1), S.albedo);
-      return { c: fog(S, sh.c, h.t), obj: true, main: h.main !== false, n: h.n, ndl: sh.ndl };
+      return { c: h.main !== false ? sh.c : fog(S, sh.c, h.t), obj: true, main: h.main !== false, n: h.n, ndl: sh.ndl };
     }
     if (tg < Infinity && tg > 0) return { c: fog(S, shadeGround(S, add(cam.pos, mul(d, tg)), tg), tg), obj: false };
     return { c: env(S, d), obj: false };
@@ -279,6 +281,7 @@
     var S = prepare(S0);
     ss = ss || 1;
     var cam = makeCamera(S.yaw, S.pitch, w / h, camDist(S.shape));
+    S.fogStart = Math.sqrt(dot(cam.pos, cam.pos));
     var out = new Uint8Array(w * h * 3);
     var buckets = { hi: [], mid: [], shadow: [], bounce: [] }, allLum = [];
     var splitX = S.split == null ? Infinity : Math.round(S.split * w);
