@@ -47,13 +47,14 @@ const { chromium } = require('playwright'); const path = require('path');
     await pg.keyboard.press('Escape'); await pg.click(id); await pg.waitForTimeout(250); await pg.screenshot({ path: out + '/w_' + id.slice(4).toLowerCase() + '.png' });
   }
   await pg.keyboard.press('Escape');
-  await pg.click('#btnTime'); await pg.waitForTimeout(400);
   const tt = await (await pg.$('#todTrack')).boundingBox();
   await pg.mouse.click(tt.x + tt.width * 0.75, tt.y + tt.height / 2); await pg.waitForTimeout(500);
   console.log('time', await pg.evaluate(() => [ChromaPicker.state.lightMode, ChromaPicker.state.time.toFixed(1), document.getElementById('modeLabel').textContent]));
   await pg.screenshot({ path: out + '/w_tod.png' });
   await pg.click('#btnFloat'); await pg.waitForTimeout(500); await pg.screenshot({ path: out + '/w_float.png' });
   await pg.click('#btnFloat'); await pg.click('#btnTime'); await pg.waitForTimeout(300);
+  console.log('time bar hidden', await pg.evaluate(() => document.getElementById('todBar').classList.contains('hidden')));
+  await pg.click('#btnTime');
   await pg.click('#btnSample'); await pg.mouse.click(vp.x + vp.width * 0.5, vp.y + vp.height * 0.5); await pg.waitForTimeout(200); await log('sample');
   await pg.click('#btnLock'); await pg.evaluate(() => { CPBridge._mock.fg = '#11AA55'; }); await pg.waitForTimeout(1500); await log('locked host change');
   await pg.click('#btnLock'); await pg.evaluate(() => { CPBridge._mock.fg = '#AA3366'; }); await pg.waitForTimeout(1500); await log('unlocked host change');

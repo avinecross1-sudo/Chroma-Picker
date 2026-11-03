@@ -188,7 +188,7 @@
 
   /* ---------- shading ---------- */
   function shadeObject(S, p, n, V, albedo) {
-    var w = 0.12 + S.subsurface * 0.6, keyNdl = 0;
+    var w = 0.12 + S.subsurface * 0.6, keyNdl = 0, rimC = [0, 0, 0];
     var h = p[1] - GROUND_Y;
     var ao = 1 - 0.55 * Math.exp(-h * 3.2) * Math.max(0, -n[1]);
     var c = add(mulv(albedo, mul(irradiance(S, n), S.ambient * ao)), groundBounce(S, n, albedo, h));
@@ -196,8 +196,17 @@
       var Lt = S.lights[i];
       if (Lt.intensity <= 0) continue;
       var kl = lightAt(Lt, p), L = kl.L, ndl = dot(n, L);
-      if (i === 0) keyNdl = ndl;
+      if (i === S.mainLight) keyNdl = ndl;
       var dif = S.toon ? (ndl > 0.5 ? 1 : ndl > 0.02 ? 0.55 : 0) : Math.max(0, (ndl + w) / (1 + w));
+      /* A rim light only catches the edges that turn away from the camera. It is added after the sheen
+       * so the bright outline is not washed out, and partly keeps the light's own color. */
+      if (Lt.rim) {
+        var edge = 1 - Math.max(0, dot(n, V));
+        var rd = Math.max(0, (ndl + 0.45) / 1.45) * edge * edge * 1.6;
+        if (S.toon) rd = rd > 0.35 ? 0.8 : 0;
+        rimC = add(rimC, mulv(lerp3(albedo, [1, 1, 1], 0.45), mul(kl.rad, rd)));
+        continue;
+      }
       c = add(c, mulv(albedo, mul(kl.rad, dif)));
       if (S.subsurface > 0) {
         var term = Math.exp(-ndl * ndl * 10) * S.subsurface * 0.45;
@@ -222,6 +231,7 @@
       if (S.chrome) e = mulv(e, albedo);
       c = add(mul(c, 1 - k), mul(e, k));
     }
+    c = add(c, rimC);
     return { c: c, ndl: keyNdl };
   }
 
@@ -231,7 +241,7 @@
       var Lt = S.lights[i];
       if (Lt.intensity <= 0) continue;
       var kl = lightAt(Lt, p);
-      var ndl = Math.max(0, kl.L[1]);
+      var ndl = Math.max(0, kl.L[1]) * (Lt.rim ? 0.3 : 1);
       if (ndl <= 0) continue;
       var vis = shadowVis(S, p, kl.L);
       lit = add(lit, mul(kl.rad, Math.min(1, ndl * 1.6 + 0.25) * vis));
@@ -276,9 +286,15 @@
     P.softness = S.softness == null ? 1 : S.softness;
     P.sheen = S.sheen == null ? 0.8 : S.sheen;
     P.bounce = S.bounce == null ? 1 : S.bounce;
-    /* average brightness of the ground under the key light, for bounce and reflections */
-    var key = S.lights && S.lights[0];
-    var sun = key ? Math.min(1.2, key.intensity * Math.max(0, key.dir[1] * 1.6 + 0.25)) : 0.5;
+    /* average brightness of the ground under the lights, for bounce and reflections */
+    var sun = 0, best = -1;
+    P.mainLight = 0;
+    (S.lights || []).forEach(function (Lt, i) {
+      var lum = Lt.intensity * (Lt.color ? (Lt.color[0] + Lt.color[1] + Lt.color[2]) / 3 : 1);
+      if (!Lt.rim) sun += lum * Math.max(0, Lt.dir[1] * 1.6 + 0.25);
+      if (!Lt.rim && lum > best) { best = lum; P.mainLight = i; }
+    });
+    sun = S.lights && S.lights.length ? Math.min(1.2, sun) : 0.5;
     var shadowTone = add(mul(S.ground, 0.26), mul(mulv(S.ground, S.sky), 0.3));
     P.groundLit = lerp3(shadowTone, S.ground, Math.min(1, sun));
     return P;
@@ -331,7 +347,7 @@
       allLum.sort(function (a, b) { return b[0] - a[0]; });
       for (var i = 0, top = Math.max(1, Math.floor(allLum.length * 0.03)); i < top; i++) buckets.hi.push(allLum[i][1]);
     }
-    var V = mul(cam.fwd, -1), Ld = S.lights[0].dir;
+    var V = mul(cam.fwd, -1), Ld = S.lights[S.mainLight || 0].dir;
     var fallbacks = {
       hi: norm(add(Ld, V)),
       mid: norm(add(mul(Ld, 0.5), mul(norm(cross(Ld, [0, 1, 0.001])), 0.87))),

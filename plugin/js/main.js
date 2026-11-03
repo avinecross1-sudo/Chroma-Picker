@@ -11,7 +11,7 @@
   function cls(el, name, on) { if (on) el.classList.add(name); else el.classList.remove(name); }
 
   /* ---------- storage (localStorage works in UXP; guarded anyway) ---------- */
-  var VER = "v3.";
+  var VER = "v4.";
   var store = {
     get: function (k, d) { try { var v = localStorage.getItem("chromaPicker." + VER + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
     set: function (k, v) { try { localStorage.setItem("chromaPicker." + VER + k, JSON.stringify(v)); } catch (e) { /* ignore */ } }
@@ -19,11 +19,13 @@
 
   /* ---------- state ---------- */
   var DEFAULTS = {
-    colors: { shape: "#5CC46A", sky: "#3D9BEA", horizon: "#E3DDF0", ground: "#8FB57A", light: "#FFF6E8", fill: "#9FC4FF" },
+    colors: { shape: "#5CC46A", sky: "#3D9BEA", horizon: "#E3DDF0", ground: "#8FB57A", light: "#FFF2E0", fill: "#D8E8FF" },
     bg: "#FFFFFF",
-    shape: "trio", lightMode: "manual", spot: false,
-    az: -45, el: 38, intensity: 1.35,
-    fillOn: false, fillAz: 120, fillEl: 18, fillInt: 0.3,
+    /* lightMode "time": the skybox follows the time of day; "manual": sky and horizon were edited by hand.
+     * The sun always follows the time of day. "light"/az/el/intensity is the key light, "fill*" is the rim light. */
+    shape: "trio", lightMode: "time", spot: false,
+    az: 70, el: 32, intensity: 0.6,
+    fillOn: true, fillAz: 205, fillEl: 28, fillInt: 1,
     time: 10, ambient: 0.3,
     sheen: 0.8, softness: 1,
     specular: 0.3, reflectivity: 0, subsurface: 0, fog: 0, contrast: 1, toon: false, chrome: false,
@@ -36,7 +38,7 @@
   state.colors = Object.assign({}, DEFAULTS.colors, state.colors || {});
   var ui = Object.assign({
     target: "shape", mode: "HSB", layout: "full", sampling: false, locked: false, trueColor: false, split: 0.5,
-    overlays: true, showField: false, floating: false, sync: true, selLight: 0, brush: 30
+    overlays: true, showField: false, floating: false, showTod: true, sync: true, selLight: 0, brush: 30
   }, store.get("ui", {}));
   ui.sampling = false;
   if (ui.layout !== "classic") ui.layout = "full";
@@ -125,34 +127,38 @@
     };
   }
 
-  /* Effective lighting, whether manual or time based. The fill light and the ground color are never driven by time. */
+  /* Effective lighting. The sun (direction, color, strength) and the ambient level always follow the time of day,
+   * and only the time bar changes them. The skybox follows it too unless sky or horizon were edited by hand. */
+  var SUN_STRENGTH = 1.2;
   function lighting() {
-    if (state.lightMode === "time") {
-      var t = timeOfDay(state.time);
-      return { sky: t.sky, horizon: t.horizon, ground: state.colors.ground, light: t.light,
-        intensity: state.intensity * t.intensity, ambient: state.ambient * t.ambientMul, az: t.az, el: t.el };
-    }
-    return { sky: state.colors.sky, horizon: state.colors.horizon, ground: state.colors.ground, light: state.colors.light,
-      intensity: state.intensity, ambient: state.ambient, az: state.az, el: state.el };
+    var t = timeOfDay(state.time), custom = state.lightMode === "manual";
+    return {
+      sky: custom ? state.colors.sky : t.sky, horizon: custom ? state.colors.horizon : t.horizon, ground: state.colors.ground,
+      sun: t.light, sunInt: SUN_STRENGTH * t.intensity, sunAz: t.az, sunEl: t.el,
+      light: state.colors.light, intensity: state.intensity, az: state.az, el: state.el,
+      ambient: state.ambient * t.ambientMul
+    };
   }
 
-  /* Editing an environment color or the key light in time-of-day mode bakes the current time into manual mode. */
+  /* Editing sky or horizon keeps the current skybox colors as a custom sky. Dragging the time bar returns to the time's skybox. */
   function bakeToManual() {
     if (state.lightMode !== "time") return;
     var t = timeOfDay(state.time);
-    state.colors.sky = t.sky; state.colors.horizon = t.horizon; state.colors.light = t.light;
-    state.az = t.az; state.el = t.el;
-    state.intensity = state.intensity * t.intensity; state.ambient = state.ambient * t.ambientMul;
+    state.colors.sky = t.sky; state.colors.horizon = t.horizon;
     state.lightMode = "manual";
-    status("Switched to manual lighting");
+    status("Custom sky: drag the time bar to return to the time's sky");
   }
 
   function lin(hex) { return C.rgbToLinear(C.hexToRgb(hex)); }
 
   function sceneParams() {
     var L = lighting();
-    var lights = [{ dir: R.dirFromAngles(L.az, L.el), color: lin(L.light), intensity: L.intensity, spot: state.spot }];
-    lights.push({ dir: R.dirFromAngles(state.fillAz, state.fillEl), color: lin(state.colors.fill), intensity: state.fillOn ? state.fillInt : 0, spot: false });
+    /* order matters: the view's handles are lights 0 (key) and 1 (rim); the sun comes last */
+    var lights = [
+      { dir: R.dirFromAngles(L.az, L.el), color: lin(L.light), intensity: L.intensity, spot: state.spot },
+      { dir: R.dirFromAngles(state.fillAz, state.fillEl), color: lin(state.colors.fill), intensity: state.fillOn ? state.fillInt : 0, spot: false, rim: true },
+      { dir: R.dirFromAngles(L.sunAz, L.sunEl), color: lin(L.sun), intensity: L.sunInt, spot: false }
+    ];
     return {
       albedo: lin(state.colors.shape), flatAlbedoRgb: C.hexToRgb(state.colors.shape),
       sky: lin(L.sky), horizon: lin(L.horizon), ground: lin(L.ground), groundEnv: lin(L.ground),
@@ -235,7 +241,7 @@
     var L = lighting();
     [0, 1].forEach(function (i) {
       var hEl = $("handle" + i);
-      var show = ui.overlays && (i === 0 || state.fillOn);
+      var show = ui.overlays && (i === 0 ? state.intensity > 0 || ui.target === "light" : state.fillOn);
       var uv = show ? R.lightHandle(S, aspect, i) : null;
       if (uv) {
         hEl.style.display = "block";
@@ -246,6 +252,9 @@
       } else hEl.style.display = "none";
       cls(hEl, "sel", ui.selLight === i && (ui.target === (i === 0 ? "light" : "fill")));
     });
+    var sm = $("sunMark"), su = ui.overlays ? R.lightHandle(S, aspect, 2) : null;
+    if (su && L.sunEl > 0) { sm.style.display = "block"; sm.style.left = (clamp(su[0], 0.04, 0.96) * 100) + "%"; sm.style.top = (clamp(su[1], 0.06, 0.94) * 100) + "%"; }
+    else sm.style.display = "none";
     var el = ui.selLight === 0 ? L.el : state.fillEl;
     $("railLightKnob").style.top = ((1 - (el + 5) / 94) * 100) + "%";
     $("railCamKnob").style.top = ((1 - (state.pitch - 2) / 68) * 100) + "%";
@@ -257,7 +266,7 @@
   }
 
   /* ---------- color access for the current target ---------- */
-  var TARGET_LABEL = { shape: "SHAPE COLOR", sky: "SKY COLOR", horizon: "HORIZON COLOR", ground: "GROUND COLOR", light: "KEY LIGHT", fill: "FILL LIGHT" };
+  var TARGET_LABEL = { shape: "SHAPE COLOR", sky: "SKY COLOR", horizon: "HORIZON COLOR", ground: "GROUND COLOR", light: "KEY LIGHT", fill: "RIM LIGHT" };
   var cache = { key: null, vals: null, hex: null };
 
   function hexOf(target) {
@@ -285,7 +294,7 @@
   }
 
   function setTargetHex(target, hex, live) {
-    if (target !== "shape" && target !== "fill" && target !== "ground") bakeToManual();
+    if (target === "sky" || target === "horizon") bakeToManual();
     state.colors[target] = hex;
     if (target === "shape") pushForeground(hex, false);
     refreshAll(!live);
@@ -554,6 +563,7 @@
   /* time-of-day bar: left edge is sunrise (5h), right edge is night (22h) */
   var TOD_START = 5, TOD_SPAN = 17;
   function todPos(h) { return clamp((h - TOD_START) / TOD_SPAN, 0, 1); }
+  function clockText(h) { var m = Math.round(h * 60) % 1440; return Math.floor(m / 60) + ":" + ("0" + (m % 60)).slice(-2); }
   function todHour(t) { return TOD_START + clamp(t, 0, 1) * TOD_SPAN; }
   var refreshPending = false, refreshHQ = false;
   /* Many events can arrive per frame while dragging; do the DOM and image work once per frame. */
@@ -564,7 +574,7 @@
     raf(function () { refreshPending = false; var q = refreshHQ; refreshHQ = false; doRefresh(q); });
   }
 
-  var MODE_LABEL = { shape: "BASE MODE", sky: "SKY MODE", horizon: "HORIZON MODE", ground: "GROUND MODE", light: "KEY LIGHT MODE", fill: "FILL LIGHT MODE" };
+  var MODE_LABEL = { shape: "BASE MODE", sky: "SKY MODE", horizon: "HORIZON MODE", ground: "GROUND MODE", light: "KEY LIGHT MODE", fill: "RIM LIGHT MODE" };
   function placeColorSection() {
     var cs = $("colorsec"), slot = $("floatSlot");
     var want = ui.floating && ui.layout !== "classic";
@@ -605,8 +615,8 @@
     $("fieldWrap").style.display = fieldVisible ? "flex" : "none";
     $("btnField").querySelector("img").src = fieldVisible ? "icons/ui/collapse.svg" : "icons/ui/chevron.svg";
     $("lightIntRow").style.display = ui.target === "light" || ui.target === "fill" ? "block" : "none";
-    var timeOn = state.lightMode === "time";
-    cls($("btnTime"), "on", timeOn); cls($("todBar"), "hidden", !timeOn || ui.layout === "classic");
+    cls($("btnTime"), "on", ui.showTod); cls($("todBar"), "hidden", !ui.showTod || ui.layout === "classic");
+    $("sunInfo").textContent = clockText(state.time) + (state.lightMode === "manual" ? " · custom sky" : "");
     $("todThumb").style.left = (todPos(state.time) * 100) + "%";
     allSliders.forEach(function (s) { s.update(); });
     updateChannelGradients();
@@ -629,19 +639,19 @@
   }
 
   /* ---------- presets ---------- */
+  /* The sun follows "time"; presets set the key and rim lights around it. A preset with sky colors uses a custom sky. */
   var BUILTIN = [
-    { name: "Clear day", lightMode: "manual", spot: false, az: -45, el: 38, intensity: 1.35, ambient: 0.3, fillOn: false, colors: { sky: "#3D9BEA", horizon: "#E3DDF0", ground: "#8FB57A", light: "#FFF6E8" } },
-    { name: "Green sky, sand", lightMode: "manual", spot: false, az: -45, el: 38, intensity: 1.35, ambient: 0.3, fillOn: false, colors: { sky: "#3C9A6C", horizon: "#D8F5C8", ground: "#FFFF7A", light: "#FFF6E8" } },
-    { name: "Amber sky, blue ground", lightMode: "manual", spot: false, az: -45, el: 38, intensity: 1.35, ambient: 0.3, fillOn: false, colors: { sky: "#8A6020", horizon: "#E0A070", ground: "#5AA0B8", light: "#FFF0DC" } },
-    { name: "Coral dusk, teal ground", lightMode: "manual", spot: false, az: -45, el: 30, intensity: 1.3, ambient: 0.32, fillOn: false, colors: { sky: "#88405A", horizon: "#F07858", ground: "#5E9088", light: "#FFE2CC" } },
-    { name: "Warm interior", lightMode: "manual", spot: false, az: -45, el: 40, intensity: 1.3, ambient: 0.3, fillOn: false, colors: { sky: "#4A2418", horizon: "#E07830", ground: "#FF8030", light: "#FFE6C8" } },
-    { name: "Studio", lightMode: "manual", spot: true, az: 40, el: 45, intensity: 1.2, ambient: 0.35, fillOn: true, fillInt: 0.25, colors: { sky: "#9A9A9A", horizon: "#6E6E6E", ground: "#3A3A3A", light: "#FFFFFF", fill: "#FFFFFF" } },
-    { name: "Overcast", lightMode: "manual", spot: false, az: 20, el: 70, intensity: 0.35, ambient: 0.9, fillOn: false, colors: { sky: "#C9CED6", horizon: "#B7BCC2", ground: "#5E5E58", light: "#F2F4F8" } },
-    { name: "Golden hour", lightMode: "time", time: 17, intensity: 1.35, ambient: 0.3 },
-    { name: "Midday sun", lightMode: "time", time: 12, intensity: 1.35, ambient: 0.3 },
-    { name: "Moonlight", lightMode: "time", time: 23, intensity: 1.35, ambient: 0.3 },
-    { name: "Rim light", lightMode: "manual", spot: false, az: 200, el: 25, intensity: 1.4, ambient: 0.3, fillOn: true, fillInt: 0.2, colors: { sky: "#33405A", horizon: "#4A4A5C", ground: "#1E1E24", light: "#BFE3FF", fill: "#FFB070" } },
-    { name: "Campfire", lightMode: "manual", spot: true, az: -60, el: 8, intensity: 1.5, ambient: 0.25, fillOn: false, colors: { sky: "#0E1222", horizon: "#2A1E1C", ground: "#24170F", light: "#FF8A3A" } }
+    { name: "Midday", lightMode: "time", time: 12, spot: false, az: 70, el: 32, intensity: 0.4, fillOn: true, fillAz: 205, fillEl: 28, fillInt: 0.6, ambient: 0.3, colors: { light: "#FFF2E0", fill: "#FFFFFF" } },
+    { name: "Morning", lightMode: "time", time: 8.5, spot: false, az: 60, el: 30, intensity: 0.6, fillOn: true, fillAz: 200, fillEl: 25, fillInt: 1, ambient: 0.3, colors: { light: "#FFF0DC", fill: "#D8E8FF" } },
+    { name: "Golden hour", lightMode: "time", time: 17, spot: false, az: -60, el: 25, intensity: 0.5, fillOn: true, fillAz: 205, fillEl: 20, fillInt: 1.4, ambient: 0.3, colors: { light: "#FFE6C8", fill: "#FFB060" } },
+    { name: "Sunset rim", lightMode: "time", time: 18.6, spot: false, az: 60, el: 25, intensity: 0.5, fillOn: true, fillAz: 200, fillEl: 15, fillInt: 1.8, ambient: 0.3, colors: { light: "#FFD8C0", fill: "#FF8A55" } },
+    { name: "Blue hour", lightMode: "time", time: 20, spot: false, az: 50, el: 30, intensity: 0.8, fillOn: true, fillAz: 210, fillEl: 25, fillInt: 1.2, ambient: 0.3, colors: { light: "#A8BCFF", fill: "#FFB070" } },
+    { name: "Moonlight", lightMode: "time", time: 23, spot: false, az: 40, el: 45, intensity: 0.5, fillOn: true, fillAz: 205, fillEl: 30, fillInt: 1, ambient: 0.3, colors: { light: "#B8C8FF", fill: "#C8D8FF" } },
+    { name: "Dramatic rim", lightMode: "time", time: 21.5, spot: false, az: 70, el: 20, intensity: 0.25, fillOn: true, fillAz: 205, fillEl: 30, fillInt: 2, ambient: 0.25, colors: { light: "#FFFFFF", fill: "#FFFFFF" } },
+    { name: "Campfire", lightMode: "time", time: 23, spot: true, az: -60, el: 8, intensity: 2, fillOn: true, fillAz: 200, fillEl: 30, fillInt: 0.6, ambient: 0.25, colors: { light: "#FF8A3A", fill: "#5A7CFF" } },
+    { name: "Green sky, sand", lightMode: "manual", time: 12, spot: false, az: 70, el: 32, intensity: 0.4, fillOn: true, fillAz: 205, fillEl: 28, fillInt: 0.8, ambient: 0.3, colors: { sky: "#3C9A6C", horizon: "#D8F5C8", ground: "#FFFF7A", light: "#FFF6E8", fill: "#FFFFFF" } },
+    { name: "Amber sky, blue ground", lightMode: "manual", time: 15, spot: false, az: 70, el: 32, intensity: 0.4, fillOn: true, fillAz: 205, fillEl: 28, fillInt: 0.8, ambient: 0.3, colors: { sky: "#8A6020", horizon: "#E0A070", ground: "#5AA0B8", light: "#FFF0DC", fill: "#FFD0A0" } },
+    { name: "Coral dusk, teal ground", lightMode: "manual", time: 18, spot: false, az: 70, el: 30, intensity: 0.5, fillOn: true, fillAz: 205, fillEl: 22, fillInt: 1.2, ambient: 0.32, colors: { sky: "#88405A", horizon: "#F07858", ground: "#5E9088", light: "#FFE2CC", fill: "#FF9A70" } }
   ];
   var PRESET_KEYS = ["lightMode", "spot", "az", "el", "time", "intensity", "ambient", "fillOn", "fillAz", "fillEl", "fillInt"];
 
@@ -695,18 +705,18 @@
     $("ambientSliders").innerHTML = ""; $("materialSliders").innerHTML = ""; $("brushRow").innerHTML = ""; $("lightIntRow").innerHTML = "";
     allSliders = [];
     $("todImg").src = gradientUrl(function (t) { return C.hexToRgb(timeOfDay(todHour(t)).horizon); }, 64);
-    addSlider("keySliders", "Direction", "az", -180, 180, 0, { bake: true, unit: "°" });
-    addSlider("keySliders", "Height", "el", -5, 89, 0, { bake: true, unit: "°" });
-    addSlider("keySliders", "Intensity", "intensity", 0, 2, 2);
+    addSlider("keySliders", "Direction", "az", -180, 180, 0, { unit: "°" });
+    addSlider("keySliders", "Height", "el", -5, 89, 0, { unit: "°" });
+    addSlider("keySliders", "Intensity", "intensity", 0, 2, 2, { unit: "×" });
     addSlider("fillSliders", "Direction", "fillAz", -180, 180, 0, { unit: "°" });
     addSlider("fillSliders", "Height", "fillEl", -5, 89, 0, { unit: "°" });
-    addSlider("fillSliders", "Intensity", "fillInt", 0, 1.5, 2);
+    addSlider("fillSliders", "Intensity", "fillInt", 0, 2, 2, { unit: "×" });
     addSlider("ambientSliders", "Ambient", "ambient", 0, 1.5, 2);
     [["Sheen", "sheen", 0, 1.5], ["Shadow soft", "softness", 0, 3], ["Specular", "specular", 0, 1], ["Reflectivity", "reflectivity", 0, 1], ["Subsurface", "subsurface", 0, 1],
       ["Depth fog", "fog", 0, 1], ["Contrast", "contrast", 0.5, 1.6]].forEach(function (d) { addSlider("materialSliders", d[0], d[1], d[2], d[3], 2); });
     /* shown in the color section while a light's color is being edited */
     allSliders.push(makeSlider($("lightIntRow"), {
-      label: "Intensity", min: 0, max: 2, decimals: 2, step: 0.05,
+      label: "Intensity", min: 0, max: 2, decimals: 2, step: 0.05, unit: "×",
       get: function () { return ui.target === "fill" ? state.fillInt : state.intensity; },
       set: function (v, live) {
         if (ui.target === "fill") { state.fillInt = v; if (v > 0) state.fillOn = true; } else state.intensity = v;
@@ -721,9 +731,9 @@
     }));
   }
 
-  function lightAngles(i) { var L = lighting(); return i === 0 ? { az: L.az, el: L.el } : { az: state.fillAz, el: state.fillEl }; }
+  function lightAngles(i) { return i === 0 ? { az: state.az, el: state.el } : { az: state.fillAz, el: state.fillEl }; }
   function setLightAngles(i, az, el) {
-    if (i === 0) { bakeToManual(); state.az = az; state.el = el; } else { state.fillAz = az; state.fillEl = el; }
+    if (i === 0) { state.az = az; state.el = el; } else { state.fillAz = az; state.fillEl = el; }
   }
 
   function bind() {
@@ -741,9 +751,7 @@
     onSeg("layoutSeg", function (v) { ui.layout = v; persist(); refreshAll(true); });
     $("btnFloat").addEventListener("click", function () { ui.floating = !ui.floating; persist(); refreshAll(true); });
     $("btnTime").addEventListener("click", function () {
-      beginEdit();
-      if (state.lightMode === "time") bakeToManual(); else state.lightMode = "time";
-      endEdit(); refreshAll(true);
+      ui.showTod = !ui.showTod; persist(); refreshAll(false);
     });
     noDrag($("vpBottom"));
     dragOn($("todTrack"), {
@@ -783,7 +791,7 @@
       var p = { name: "My setup " + (userPresets.length + 1), colors: {} };
       PRESET_KEYS.forEach(function (k) { p[k] = state[k]; });
       ["sky", "horizon", "ground", "light", "fill"].forEach(function (k) { p.colors[k] = state.colors[k]; });
-      if (state.lightMode === "time") p.colors = { fill: state.colors.fill };
+      if (state.lightMode === "time") { delete p.colors.sky; delete p.colors.horizon; }
       userPresets.push(p); persist(); buildPresetList(); status("Saved " + p.name);
     });
 

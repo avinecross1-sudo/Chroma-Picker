@@ -35,13 +35,15 @@
         </div>
       </div>
       <div id="popLights" class="pop">
+        <div class="row"><span class="pop-title">SUN</span><div class="spacer"></div><span id="sunInfo" class="sun-info"></span></div>
+        <div class="hint sun-hint">Follows the time of day. Use the time bar at the bottom of the view to move it.</div>
         <div class="row"><span class="pop-title">KEY LIGHT</span><div class="spacer"></div>
           <button id="spotBtn" class="small toggle" title="Spot light instead of a directional sun">Spot</button>
           <button id="editKeyBtn" class="small" title="Edit the key light color">Color</button></div>
         <div id="keySliders"></div>
-        <div class="row"><span class="pop-title">FILL LIGHT</span><div class="spacer"></div>
+        <div class="row"><span class="pop-title">RIM LIGHT</span><div class="spacer"></div>
           <button id="fillOnBtn" class="small toggle">On</button>
-          <button id="editFillBtn" class="small" title="Edit the fill light color">Color</button></div>
+          <button id="editFillBtn" class="small" title="Edit the rim light color">Color</button></div>
         <div id="fillSliders"></div>
         <div id="ambientSliders"></div>
       </div>
@@ -81,7 +83,8 @@
         <div id="railLight" class="rail left" title="Height of the selected light"><div class="rail-line"></div><div class="rail-knob" id="railLightKnob"></div></div>
         <div id="railCam" class="rail right" title="Camera tilt"><div class="rail-line"></div><div class="rail-knob" id="railCamKnob"></div></div>
         <div id="handle0" class="light-handle" title="Key light: drag to move, click to edit its color"><img src="icons/ui/sun.svg" alt=""></div>
-        <div id="handle1" class="light-handle fill" title="Fill light: drag to move, click to edit its color"><img src="icons/ui/sun.svg" alt=""></div>
+        <div id="sunMark" class="sun-mark" title="Sun: set by the time of day"><img src="icons/ui/sun.svg" alt=""></div>
+        <div id="handle1" class="light-handle fill" title="Rim light: drag to move, click to edit its color"><img src="icons/ui/sun.svg" alt=""></div>
       </div>
       <div class="ibtn vp corner" id="btnResetScene" title="Reset camera and lights"><img src="icons/ui/reset.svg" alt=""></div>
       <div id="sampleHint" class="sample-hint hidden">Click the render to sample a lit shade</div>
