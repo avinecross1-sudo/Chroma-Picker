@@ -12,7 +12,7 @@ From top to bottom, the panel is laid out as one workspace:
 
 1. **Tool row** (one slim row at the top). Settings open as popovers that float over the view.
    - Left: the layout icon opens the scene and material settings (Sphere, Trio or Cube; sheen, shadow softness, specular, reflectivity, subsurface, depth fog, contrast, toon and chrome). The sliders icon floats the color controls over the bottom of the view. The half circle toggles **True Color**, a split view against the unlit local color on neutral gray (drag the divider or use the ← → keys).
-   - Right: the sunrise icon turns on time of day, which shows a bar along the bottom of the view labeled RISE, SUNNY, G.HOUR, SUNSET and NIGHT. Dragging it moves the sun and recolors the sky, horizon and ground together. The bulb opens the key and fill lights (direction, height, intensity, spot, ambient and each light's color). The bookmark opens lighting setups, built in and your own. The globe opens pinned colors, history with undo/redo, the 3D or Classic layout, the canvas handles toggle, brush size, Photoshop sync, copy hex and .ase/.gpl export.
+   - Right: the sunrise icon shows or hides the time bar along the bottom of the view (RISE, SUNNY, G.HOUR, SUNSET, NIGHT). The bulb opens the lights: the sun's current time, then the key and rim lights (direction, height, intensity up to 2×, spot, ambient and each light's color). The bookmark opens lighting setups, built in and your own. The globe opens pinned colors, history with undo/redo, the 3D or Classic layout, the canvas handles toggle, brush size, Photoshop sync, copy hex and .ase/.gpl export.
 2. **View**: fills whatever height the panel has. ↻ in its corner resets the camera and lights.
 3. **Targets row**: Shape (the large circle), Sky, Horizon and Ground, then the eyedropper, the lock, and Photoshop's foreground and background colors.
 4. **Color section**, then a **status bar** showing which target is being edited (BASE MODE, SKY MODE, GROUND MODE and so on).
@@ -23,8 +23,11 @@ From top to bottom, the panel is laid out as one workspace:
 1. **Lighting**
    - Sky, horizon and ground are three independent colors. Together they form the backdrop and also light the subject: sky fill from above, bounce from the ground below, and a sheen at the edges that picks up the horizon. Shadows on the ground are soft and spread out with distance.
    - The material popover has Sheen and Shadow softness sliders.
-2. **Lighting rig**
-   - Drag the sun handles (key and fill) around the subject.
+2. **Lighting rig**: three lights.
+   - **Sun**: part of the skybox. Its direction, color and strength, and the sky and horizon colors, follow the time of day, and only the time bar changes them. It shows as a small sun mark on the view. Editing Sky or Horizon by hand keeps a custom sky until you drag the time bar again.
+   - **Key light**: your main light, with color and intensity from 0 to 2×.
+   - **Rim light**: a back light that only catches the edges turned away from the camera, with color and intensity from 0 to 2×.
+   - Drag the key and rim handles around the subject.
    - Click a handle to edit that light's color.
    - The left rail sets the height of the selected light.
 3. **Camera**
