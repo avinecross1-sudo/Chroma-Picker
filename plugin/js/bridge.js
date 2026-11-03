@@ -8,7 +8,7 @@
   try { uxp = require("uxp"); } catch (e) { uxp = null; }
 
   var isPS = !!(ps && ps.app);
-  var mock = { fg: "#C8643C", bg: "#FFFFFF" };
+  var mock = { fg: "#D14949", bg: "#2E7D4F" };
 
   function hexFromSolid(sc) {
     try { return ("#" + sc.rgb.hexValue).toUpperCase(); } catch (e) { return null; }
@@ -46,6 +46,18 @@
     setBackground: function (hex) {
       if (!isPS) { mock.bg = hex; return Promise.resolve(); }
       return modal("Set Background Color", function () { ps.app.backgroundColor = solidFromHex(hex); }).catch(function (e) { console.warn("setBackground", e); });
+    },
+
+    /* Set the current brush tip diameter in pixels (best effort; needs a brush-type tool active). */
+    setBrushSize: function (px) {
+      if (!isPS) { mock.brush = px; return Promise.resolve(); }
+      return modal("Set Brush Size", function () {
+        return ps.action.batchPlay([{
+          _obj: "set",
+          _target: [{ _ref: "brush", _enum: "ordinal", _value: "targetEnum" }],
+          to: { _obj: "brush", masterDiameter: { _unit: "pixelsUnit", _value: px } }
+        }], {});
+      }).catch(function (e) { console.warn("setBrushSize", e); });
     },
 
     /* Subscribe to Photoshop events that commonly change the color chips. */
