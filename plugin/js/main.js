@@ -229,7 +229,7 @@
   }
 
   /* ---------- color access for the current target ---------- */
-  var TARGET_LABEL = { shape: "SHAPE COLOR", sky: "SKY COLOR", horizon: "HORIZON COLOR", ground: "GROUND COLOR", light: "KEY LIGHT COLOR", fill: "FILL LIGHT COLOR" };
+  var TARGET_LABEL = { shape: "SHAPE COLOR", sky: "SKY COLOR", horizon: "HORIZON COLOR", ground: "GROUND COLOR", light: "KEY LIGHT", fill: "FILL LIGHT" };
   var cache = { key: null, vals: null, hex: null };
 
   function hexOf(target) {
@@ -559,6 +559,7 @@
     var fieldVisible = ui.showField || ui.layout === "classic";
     $("fieldWrap").style.display = fieldVisible ? "flex" : "none";
     $("btnField").querySelector("img").src = fieldVisible ? "icons/ui/collapse.svg" : "icons/ui/chevron.svg";
+    $("lightIntRow").style.display = ui.target === "light" || ui.target === "fill" ? "block" : "none";
     $("timeSliders").style.opacity = state.lightMode === "time" ? "1" : "0.5";
     allSliders.forEach(function (s) { s.update(); });
     updateChannelGradients();
@@ -644,7 +645,7 @@
 
   function buildSliders() {
     $("timeSliders").innerHTML = ""; $("keySliders").innerHTML = ""; $("fillSliders").innerHTML = "";
-    $("ambientSliders").innerHTML = ""; $("materialSliders").innerHTML = ""; $("brushRow").innerHTML = "";
+    $("ambientSliders").innerHTML = ""; $("materialSliders").innerHTML = ""; $("brushRow").innerHTML = ""; $("lightIntRow").innerHTML = "";
     allSliders = [];
     addSlider("timeSliders", "Time", "time", 0, 24, 1, { time: true, unit: "h" });
     addSlider("keySliders", "Direction", "az", -180, 180, 0, { bake: true, unit: "°" });
@@ -656,6 +657,15 @@
     addSlider("ambientSliders", "Ambient", "ambient", 0, 1.5, 2);
     [["Sheen", "sheen", 0, 1.5], ["Shadow soft", "softness", 0, 3], ["Specular", "specular", 0, 1], ["Reflectivity", "reflectivity", 0, 1], ["Subsurface", "subsurface", 0, 1],
       ["Depth fog", "fog", 0, 1], ["Contrast", "contrast", 0.5, 1.6]].forEach(function (d) { addSlider("materialSliders", d[0], d[1], d[2], d[3], 2); });
+    /* shown in the color section while a light's color is being edited */
+    allSliders.push(makeSlider($("lightIntRow"), {
+      label: "Intensity", min: 0, max: 2, decimals: 2, step: 0.05,
+      get: function () { return ui.target === "fill" ? state.fillInt : state.intensity; },
+      set: function (v, live) {
+        if (ui.target === "fill") { state.fillInt = v; if (v > 0) state.fillOn = true; } else state.intensity = v;
+        refreshAll(!live);
+      }
+    }));
     allSliders.push(makeSlider($("brushRow"), {
       label: "Brush", min: 1, max: 500, step: 1, unit: "px", noUndo: true,
       get: function () { return ui.brush; },

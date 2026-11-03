@@ -30,6 +30,10 @@ const { chromium } = require('playwright'); const path = require('path');
   const h1 = await (await pg.$('#handle1')).boundingBox();
   await pg.mouse.click(h1.x + h1.width / 2, h1.y + h1.height / 2); await pg.waitForTimeout(200);
   await log('fill click');
+  const lt = await (await pg.$('#lightIntRow .track')).boundingBox();
+  await pg.mouse.click(lt.x + lt.width * 0.25, lt.y + lt.height / 2); await pg.waitForTimeout(300);
+  console.log('fill intensity', await pg.evaluate(() => ChromaPicker.state.fillInt.toFixed(2)));
+  await pg.screenshot({ path: out + '/w_fillint.png' });
   // targets
   await pg.click('.target[data-t="sky"]'); await pg.fill('#hexInput', '3366CC'); await pg.press('#hexInput', 'Enter'); await pg.waitForTimeout(200);
   await pg.click('.target[data-t="shape"]');

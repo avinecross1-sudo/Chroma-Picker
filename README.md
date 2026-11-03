@@ -16,7 +16,7 @@ From top to bottom, the panel is laid out as one workspace:
 2. **Favorites, time of day, lights, presets and settings** (top right)
    - ★ opens pinned colors.
    - The sunrise icon opens the Time of day slider, which runs from night through sunrise, noon and sunset, and moves the sun and recolors the sky, horizon and ground together.
-   - The bulb opens the key and fill lights: direction, height, intensity, a spot option, ambient, and each light's color.
+   - The bulb opens the key and fill lights: direction, height, intensity, a spot option, ambient, and each light's color. While a light's color is being edited, the color section also shows that light's Intensity slider.
    - The bookmark opens lighting setups: built-in ones, plus your own that you can save and delete.
    - The globe opens Photoshop sync, copy hex, and .ase/.gpl export.
 3. **Viewport tools** (inside the view, top)
