@@ -41,8 +41,10 @@
     var fwd = norm(sub(target, pos));
     var right = norm(cross(fwd, [0, 1, 0]));
     var up = cross(right, fwd);
-    /* keep the horizontal field of view in tall panels */
-    var tanF = Math.tan(19 * DEG) * ((aspect || 1) < 1.25 ? 1.25 / (aspect || 1) : 1);
+    /* The subject grows with the panel's height, and also with its width: in tall panels the horizontal
+     * field of view is kept, and in wide panels the camera zooms in (up to a limit, so the subject still fits). */
+    var a = aspect || 1;
+    var tanF = Math.tan(19 * DEG) * (a < 1.25 ? 1.25 / a : Math.max(0.66, Math.pow(1.25 / a, 0.75)));
     return { pos: pos, fwd: fwd, right: right, up: up, tanF: tanF, aspect: aspect || 1 };
   }
 
