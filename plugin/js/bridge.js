@@ -8,7 +8,7 @@
   try { uxp = require("uxp"); } catch (e) { uxp = null; }
 
   var isPS = !!(ps && ps.app);
-  var mock = { fg: "#D14949", bg: "#2E7D4F" };
+  var mock = { fg: "#5CC46A", bg: "#2E4D7D" };
 
   function hexFromSolid(sc) {
     try { return ("#" + sc.rgb.hexValue).toUpperCase(); } catch (e) { return null; }

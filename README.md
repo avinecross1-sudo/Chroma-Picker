@@ -24,20 +24,23 @@ From top to bottom, the panel is laid out as one workspace:
    - The sliders icon opens the scene and material settings: Sphere, Trio or Cube; specular, reflectivity, subsurface, depth fog, contrast, toon and chrome.
    - The half circle toggles **True Color**, a split view against the unlit local color on neutral gray. Drag the divider or use the ← → keys.
    - ↻ resets the camera and lights.
-4. **Lighting rig**
+4. **Lighting**
+   - Sky, horizon and ground are three independent colors. Together they form the backdrop and also light the subject: sky fill from above, bounce from the ground below, and a sheen at the edges that picks up the horizon. Shadows on the ground are soft and spread out with distance.
+   - The material popover has Sheen and Shadow softness sliders.
+5. **Lighting rig**
    - Drag the sun handles (key and fill) around the subject.
    - Click a handle to edit that light's color.
    - The left rail sets the height of the selected light.
-5. **Camera**
+6. **Camera**
    - Drag anywhere in the view to orbit.
    - The right rail tilts the camera.
-6. **Quick-select targets**: Shape (the large circle), Sky, Horizon and Ground. The color section edits whichever target is selected.
-7. **Color section**
+7. **Quick-select targets**: Shape (the large circle), Sky, Horizon and Ground. The color section edits whichever target is selected.
+8. **Color section**
    - The header shows the target name, a hex field and the mode menu (HSB, RGB, Lab, CMYK, Hue Cube).
    - The ⌄ button shows the 2D color field, and ↑ collapses the section.
    - Below that are the channel sliders and a Brush size slider that sets Photoshop's brush tip.
    - The **lit palette** gives base, highlight, midtone, shadow and bounce colors estimated from the render. Click a color to set the foreground and copy its hex, or Alt-click it to set the background.
-8. **Sample, lock and sync**
+9. **Sample, lock and sync**
    - The eyedropper samples a lit shade from the render and sends it to the foreground.
    - The lock keeps the base color when Photoshop's foreground changes.
    - The two squares are Photoshop's foreground and background. Click either one to send the current color to it, and Alt-click the background square to swap them.

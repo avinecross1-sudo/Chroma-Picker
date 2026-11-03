@@ -26,6 +26,7 @@ const { chromium } = require('playwright'); const path = require('path');
   await pg.mouse.move(vp.x + vp.width * 0.8, vp.y + vp.height * 0.2, { steps: 6 }); await pg.mouse.up(); await pg.waitForTimeout(300);
   await log('key drag');
   // click fill handle -> fill target
+  await pg.evaluate(() => { ChromaPicker.state.fillOn = true; ChromaPicker.refresh(true); }); await pg.waitForTimeout(500);
   const h1 = await (await pg.$('#handle1')).boundingBox();
   await pg.mouse.click(h1.x + h1.width / 2, h1.y + h1.height / 2); await pg.waitForTimeout(200);
   await log('fill click');
