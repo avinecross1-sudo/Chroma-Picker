@@ -220,7 +220,7 @@
     $("railCamKnob").style.top = ((1 - (state.pitch - 2) / 68) * 100) + "%";
     $("overlay").style.display = ui.overlays ? "block" : "none";
     $("vpMore").style.display = ui.overlays ? "flex" : "none";
-    $("btnResetScene").style.display = ui.overlays ? "block" : "none";
+    $("btnResetScene").style.display = ui.overlays ? "flex" : "none";
     var sh = $("splitHandle"), lbl = $("splitLabel");
     cls(sh, "hidden", !ui.trueColor); cls(lbl, "hidden", !ui.trueColor);
     if (ui.trueColor) sh.style.left = (ui.split * 100) + "%";
@@ -552,10 +552,11 @@
     cls(app, "compact", ui.layout === "compact"); cls(app, "classic", ui.layout === "classic");
     $("layoutName").textContent = LAYOUT_NAMES[ui.layout];
     $("csBody").style.display = ui.collapsed ? "none" : "block";
-    cls($("btnCollapse"), "flip", ui.collapsed);
+    /* swap icons instead of CSS transforms, which UXP may not apply */
+    $("btnCollapse").querySelector("img").src = ui.collapsed ? "icons/ui/chevron.svg" : "icons/ui/collapse.svg";
     var fieldVisible = ui.showField || ui.layout === "classic";
     $("fieldWrap").style.display = fieldVisible ? "flex" : "none";
-    cls($("btnField"), "flip", fieldVisible);
+    $("btnField").querySelector("img").src = fieldVisible ? "icons/ui/collapse.svg" : "icons/ui/chevron.svg";
     $("timeSliders").style.opacity = state.lightMode === "time" ? "1" : "0.5";
     allSliders.forEach(function (s) { s.update(); });
     updateChannelGradients();

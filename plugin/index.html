@@ -9,15 +9,15 @@
   <div id="app">
     <!-- 1 / 2: top bar -->
     <div id="topbar" class="topbar">
-      <button class="tb" id="btnLayout" title="Panel layout: Full, Compact, Classic"><img src="icons/ui/layout.svg" alt=""></button>
-      <button class="tb" id="btnHistory" data-pop="popHistory" title="Recent colors, undo and redo"><img src="icons/ui/history.svg" alt=""></button>
+      <div class="ibtn tb" id="btnLayout" title="Panel layout: Full, Compact, Classic"><img src="icons/ui/layout.svg" alt=""></div>
+      <div class="ibtn tb" id="btnHistory" data-pop="popHistory" title="Recent colors, undo and redo"><img src="icons/ui/history.svg" alt=""></div>
       <span id="layoutName" class="tb-label"></span>
       <div class="spacer"></div>
-      <button class="tb" id="btnFav" data-pop="popFav" title="Pinned colors"><img src="icons/ui/star.svg" alt=""></button>
-      <button class="tb" id="btnTime" data-pop="popTime" title="Time of day"><img src="icons/ui/timeofday.svg" alt=""></button>
-      <button class="tb" id="btnLights" data-pop="popLights" title="Lights"><img src="icons/ui/lights.svg" alt=""></button>
-      <button class="tb" id="btnPresets" data-pop="popPresets" title="Lighting setups"><img src="icons/ui/presets.svg" alt=""></button>
-      <button class="tb" id="btnSettings" data-pop="popSettings" title="Photoshop sync and export"><img src="icons/ui/settings.svg" alt=""></button>
+      <div class="ibtn tb" id="btnFav" data-pop="popFav" title="Pinned colors"><img src="icons/ui/star.svg" alt=""></div>
+      <div class="ibtn tb" id="btnTime" data-pop="popTime" title="Time of day"><img src="icons/ui/timeofday.svg" alt=""></div>
+      <div class="ibtn tb" id="btnLights" data-pop="popLights" title="Lights"><img src="icons/ui/lights.svg" alt=""></div>
+      <div class="ibtn tb" id="btnPresets" data-pop="popPresets" title="Lighting setups"><img src="icons/ui/presets.svg" alt=""></div>
+      <div class="ibtn tb" id="btnSettings" data-pop="popSettings" title="Photoshop sync and export"><img src="icons/ui/settings.svg" alt=""></div>
     </div>
 
     <!-- popovers -->
@@ -102,14 +102,14 @@
         <div id="handle1" class="light-handle fill" title="Fill light: drag to move, click to edit its color"><img src="icons/ui/sun.svg" alt=""></div>
       </div>
       <div class="vp-tools left">
-        <button class="vp" id="btnEye" title="Show or hide the canvas controls"><img src="icons/ui/eye.svg" alt=""></button>
+        <div class="ibtn vp" id="btnEye" title="Show or hide the canvas controls"><img src="icons/ui/eye.svg" alt=""></div>
         <span class="vp-more" id="vpMore">
-          <button class="vp" id="btnMaterial" data-pop="popMaterial" title="Scene and material"><img src="icons/ui/tune.svg" alt=""></button>
-          <button class="vp" id="btnTrue" title="True Color: compare with the unlit local color (arrow keys move the split)"><img src="icons/ui/truecolor.svg" alt=""></button>
+          <div class="ibtn vp" id="btnMaterial" data-pop="popMaterial" title="Scene and material"><img src="icons/ui/tune.svg" alt=""></div>
+          <div class="ibtn vp" id="btnTrue" title="True Color: compare with the unlit local color (arrow keys move the split)"><img src="icons/ui/truecolor.svg" alt=""></div>
         </span>
       </div>
       <div class="vp-tools right">
-        <button class="vp" id="btnResetScene" title="Reset camera and lights"><img src="icons/ui/reset.svg" alt=""></button>
+        <div class="ibtn vp" id="btnResetScene" title="Reset camera and lights"><img src="icons/ui/reset.svg" alt=""></div>
       </div>
       <div id="sampleHint" class="sample-hint hidden">Click the render to sample a lit shade</div>
     </div>
@@ -121,8 +121,8 @@
       <div class="target" data-t="horizon" title="Horizon"><div class="dot" id="tHorizon"></div></div>
       <div class="target" data-t="ground" title="Ground"><div class="dot" id="tGround"></div></div>
       <div class="spacer"></div>
-      <button class="sq" id="btnSample" title="Sample: click the render to send a lit shade to the foreground"><img src="icons/ui/eyedropper.svg" alt=""></button>
-      <button class="sq" id="btnLock" title="Lock: keep the base color when Photoshop's foreground changes"><img id="lockImg" src="icons/ui/unlock.svg" alt=""></button>
+      <div class="ibtn sq" id="btnSample" title="Sample: click the render to send a lit shade to the foreground"><img src="icons/ui/eyedropper.svg" alt=""></div>
+      <div class="ibtn sq" id="btnLock" title="Lock: keep the base color when Photoshop's foreground changes"><img id="lockImg" src="icons/ui/unlock.svg" alt=""></div>
       <div class="ps-chip" id="fgChip" title="Photoshop foreground: click to send the current color"></div>
       <div class="ps-chip" id="bgChip" title="Photoshop background: click to send the current color, Alt-click to swap"></div>
     </div>
@@ -130,8 +130,8 @@
     <!-- 7: color section -->
     <div class="colorsec">
       <div class="cs-head">
-        <button class="ic" id="btnCollapse" title="Collapse the color section"><img src="icons/ui/collapse.svg" alt=""></button>
-        <button class="ic" id="btnField" title="Show or hide the color field"><img src="icons/ui/chevron.svg" alt=""></button>
+        <div class="ibtn ic" id="btnCollapse" title="Collapse the color section"><img src="icons/ui/collapse.svg" alt=""></div>
+        <div class="ibtn ic" id="btnField" title="Show or hide the color field"><img src="icons/ui/chevron.svg" alt=""></div>
         <span id="targetLabel" class="cs-label">SPHERE COLOR</span>
         <div class="spacer"></div>
         <span class="hash">#</span>

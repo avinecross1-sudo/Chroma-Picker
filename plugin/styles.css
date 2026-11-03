@@ -20,6 +20,9 @@ button.small { padding: 2px 6px; font-size: 10px; }
 button.on, button.toggle.on { background: var(--accent); border-color: var(--accent); color: #fff; }
 button:disabled { opacity: 0.4; }
 button img { width: 16px; height: 16px; }
+/* Icon buttons are divs: UXP draws <button> as a native control and hides child images. */
+.ibtn { display: flex; flex-direction: row; align-items: center; justify-content: center; cursor: pointer; border-radius: 3px; box-sizing: border-box; }
+.ibtn img { display: block; width: 16px; height: 16px; }
 .seg { display: flex; flex-direction: row; }
 .seg button { margin: 0; border-radius: 0; border-right-width: 0; padding: 2px 6px; font-size: 10px; }
 .seg button:first-child { border-radius: 3px 0 0 3px; }
@@ -27,7 +30,8 @@ button img { width: 16px; height: 16px; }
 
 /* top bar */
 .topbar { display: flex; flex-direction: row; align-items: center; height: 30px; padding: 0 4px; background: var(--bg2); border-bottom: 1px solid #000; }
-.tb { background: transparent; border: 1px solid transparent; width: 26px; height: 24px; padding: 3px; margin: 0 1px; }
+.tb { border: 1px solid transparent; width: 26px; height: 24px; margin: 0 1px; }
+.tb:hover { background: var(--bg3); }
 .tb.active { background: var(--bg3); border-color: var(--line); }
 .tb img { width: 16px; height: 16px; }
 .tb-label { color: var(--dim); font-size: 10px; margin-left: 4px; }
@@ -53,8 +57,8 @@ button img { width: 16px; height: 16px; }
 .vp-tools.left { left: 6px; }
 .vp-tools.right { right: 6px; }
 .vp-more { display: flex; flex-direction: row; }
-.vp { background: rgba(0, 0, 0, 0.28); border: 1px solid transparent; width: 24px; height: 22px; padding: 2px; margin-right: 3px; border-radius: 3px; }
-.vp.on { background: var(--accent); }
+.vp { background-color: rgba(0, 0, 0, 0.3); width: 24px; height: 22px; margin-right: 3px; }
+.vp.on { background-color: var(--accent); }
 .vp img { width: 16px; height: 16px; }
 .rail { position: absolute; top: 36px; bottom: 30px; width: 14px; cursor: ns-resize; }
 .rail.left { left: 10px; }
@@ -79,16 +83,15 @@ button img { width: 16px; height: 16px; }
 .target.big .dot { width: 28px; height: 28px; border-radius: 15px; }
 .target.sel { border: 2px solid #fff; }
 .target.sel .dot { left: 1px; top: 1px; }
-.sq { width: 30px; height: 30px; padding: 6px; margin: 0 0 0 5px; background: var(--bg3); }
-.sq.on { background: var(--accent); }
+.sq { width: 30px; height: 30px; margin: 0 0 0 5px; background-color: var(--bg3); border: 1px solid var(--line); }
+.sq.on { background-color: var(--accent); border-color: var(--accent); }
 .ps-chip { width: 30px; height: 30px; margin-left: 5px; border: 1px solid #000; outline: 1px solid var(--line); cursor: pointer; }
 
 /* color section */
 .colorsec { padding: 6px 8px 4px 8px; }
 .cs-head { display: flex; flex-direction: row; align-items: center; margin-bottom: 6px; }
-.ic { background: transparent; border: none; padding: 1px; width: 18px; height: 18px; margin-right: 2px; }
+.ic { width: 18px; height: 18px; margin-right: 2px; }
 .ic img { width: 14px; height: 14px; }
-.ic.flip img { transform: rotate(180deg); }
 .cs-label { color: var(--dim); font-size: 10px; letter-spacing: 1px; margin-left: 4px; }
 .hash { color: var(--dim); margin-right: 3px; }
 input.hex, input.num, select { background: var(--bg2); color: var(--text); border: 1px solid var(--line); border-radius: 3px; font-size: 11px; padding: 2px 4px; }
