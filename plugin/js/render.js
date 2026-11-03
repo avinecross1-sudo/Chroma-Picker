@@ -273,7 +273,9 @@
    *    specular, reflectivity, subsurface, sheen, softness, toon, chrome, fog, contrast,
    *    shape ("sphere" | "trio" | "cube"), yaw, pitch, split (null or 0..1), flatAlbedoRgb (sRGB 0..255)
    * Returns { rgb: Uint8Array, w, h, palette } */
-  function render(S0, w, h, ss) {
+  /* A render that can run in time slices, so the panel stays responsive while a sharp frame is computed.
+   * job.step(ms) renders rows for about ms milliseconds and returns true when finished; job.result() gives the frame. */
+  function renderJob(S0, w, h, ss) {
     var S = prepare(S0);
     ss = ss || 1;
     var cam = makeCamera(S.yaw, S.pitch, w / h, camDist(S.shape));
@@ -282,7 +284,8 @@
     var splitX = S.split == null ? Infinity : Math.round(S.split * w);
     var flat = S.flatAlbedoRgb || [128, 128, 128];
     var inv = 1 / (ss * ss);
-    for (var y = 0; y < h; y++) {
+    var y = 0, done = null;
+    function row(y) {
       for (var x = 0; x < w; x++) {
         var acc = [0, 0, 0], cov = 0, center = null;
         for (var sy = 0; sy < ss; sy++) for (var sx = 0; sx < ss; sx++) {
@@ -306,6 +309,7 @@
         }
       }
     }
+    function finish() {
     if (allLum.length) {
       allLum.sort(function (a, b) { return b[0] - a[0]; });
       for (var i = 0, top = Math.max(1, Math.floor(allLum.length * 0.03)); i < top; i++) buckets.hi.push(allLum[i][1]);
@@ -328,14 +332,29 @@
       palette[k] = encodeOut(S, c);
     });
     return { rgb: out, w: w, h: h, palette: palette };
+    }
+    var now = typeof performance !== "undefined" && performance.now ? function () { return performance.now(); } : function () { return Date.now(); };
+    return {
+      step: function (ms) {
+        if (done) return true;
+        var t0 = now();
+        while (y < h) { row(y); y++; if (ms != null && now() - t0 >= ms) break; }
+        if (y >= h) done = finish();
+        return !!done;
+      },
+      result: function () { return done; },
+      progress: function () { return y / h; }
+    };
   }
+
+  function render(S0, w, h, ss) { var job = renderJob(S0, w, h, ss); job.step(null); return job.result(); }
 
   function lightHandle(S, aspect, i) {
     var cam = makeCamera(S.yaw, S.pitch, aspect || 1, camDist(S.shape));
     return project(cam, add([0, -0.2, 0], mul(S.lights[i || 0].dir, S.shape === "trio" ? 2.4 : 1.8)));
   }
 
-  var api = { render: render, dirFromAngles: dirFromAngles, lightHandle: lightHandle, makeCamera: makeCamera, project: project };
+  var api = { render: render, renderJob: renderJob, dirFromAngles: dirFromAngles, lightHandle: lightHandle, makeCamera: makeCamera, project: project };
   root.CPRender = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })(typeof window !== "undefined" ? window : globalThis);

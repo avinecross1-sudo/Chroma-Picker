@@ -1,4 +1,5 @@
-/* Chroma Picker workspace. Kept to CSS that UXP supports: flexbox, absolute positioning, no grid, no gap. */
+/* Chroma Picker workspace. Kept to CSS that UXP supports: flexbox, absolute positioning, no grid, no gap,
+ * no pseudo-elements, no transforms. Icon buttons are divs because UXP hides images inside <button>. */
 :root {
   --bg: #26282c;
   --bg2: #1d1f22;
@@ -8,62 +9,41 @@
   --dim: #8d939c;
   --accent: #3d8eff;
 }
-html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-family: sans-serif; font-size: 11px; overflow-x: hidden; }
-#app { position: relative; }
+html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-family: sans-serif; font-size: 11px; overflow: hidden; }
+#app { position: relative; display: flex; flex-direction: column; height: 100%; }
 .row { display: flex; flex-direction: row; align-items: center; margin-bottom: 6px; }
 .spacer { flex: 1 1 auto; }
 .hidden { display: none; }
-.hint { color: var(--dim); font-size: 10px; }
+.hint { color: var(--dim); font-size: 10px; margin-top: 2px; }
 
 button { background: var(--bg3); color: var(--text); border: 1px solid var(--line); border-radius: 3px; padding: 3px 7px; font-size: 11px; margin-right: 4px; cursor: pointer; }
 button.small { padding: 2px 6px; font-size: 10px; }
 button.on, button.toggle.on { background: var(--accent); border-color: var(--accent); color: #fff; }
 button:disabled { opacity: 0.4; }
-button img { width: 16px; height: 16px; }
-/* Icon buttons are divs: UXP draws <button> as a native control and hides child images. */
-.ibtn { display: flex; flex-direction: row; align-items: center; justify-content: center; cursor: pointer; border-radius: 3px; box-sizing: border-box; }
-.ibtn img { display: block; width: 16px; height: 16px; }
-.seg { display: flex; flex-direction: row; }
+.seg { display: flex; flex-direction: row; margin-right: 4px; }
 .seg button { margin: 0; border-radius: 0; border-right-width: 0; padding: 2px 6px; font-size: 10px; }
 .seg button:first-child { border-radius: 3px 0 0 3px; }
 .seg button:last-child { border-radius: 0 3px 3px 0; border-right-width: 1px; }
 
-/* top bar */
-.topbar { display: flex; flex-direction: row; align-items: center; height: 30px; padding: 0 4px; background: var(--bg2); border-bottom: 1px solid #000; }
-.tb { border: 1px solid transparent; width: 26px; height: 24px; margin: 0 1px; }
-.tb:hover { background: var(--bg3); }
-.tb.active { background: var(--bg3); border-color: var(--line); }
-.tb img { width: 16px; height: 16px; }
-.tb-label { color: var(--dim); font-size: 10px; margin-left: 4px; }
+.ibtn { display: flex; flex-direction: row; align-items: center; justify-content: center; cursor: pointer; border-radius: 3px; }
+.ibtn img { display: block; width: 16px; height: 16px; }
 
-/* popovers */
-.popover { position: absolute; left: 6px; right: 6px; top: 32px; z-index: 50; background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 8px; }
-.pop { display: none; }
-.pop.open { display: block; }
-.pop-title { font-weight: bold; font-size: 11px; color: var(--text); }
-.pop .hint { margin-top: 4px; }
-.tod-scale { display: flex; flex-direction: row; justify-content: space-between; color: var(--dim); font-size: 9px; margin: -2px 44px 4px 64px; }
-.preset-item { display: flex; flex-direction: row; align-items: center; padding: 3px 4px; border-radius: 3px; cursor: pointer; }
-.preset-item:hover { background: var(--bg3); }
-.preset-item .pv { width: 28px; height: 12px; margin-right: 6px; border: 1px solid var(--line); }
-.preset-item .nm { flex: 1 1 auto; }
-.preset-item .x { color: var(--dim); padding: 0 4px; }
+/* slim tool row */
+.topbar { flex: 0 0 auto; display: flex; flex-direction: row; align-items: center; height: 26px; padding: 0 4px; background: var(--bg2); border-bottom: 1px solid #000; }
+.tb { width: 24px; height: 22px; margin: 0 1px; border: 1px solid transparent; }
+.tb img { width: 15px; height: 15px; }
+.tb.active, .tb.on { background-color: var(--bg3); border-color: #c9ced6; }
 
 /* viewport */
-.viewport { position: relative; height: 300px; background: #111; overflow: hidden; cursor: grab; }
+.viewport { position: relative; flex: 1 1 auto; min-height: 120px; background: #111; overflow: hidden; cursor: grab; }
 .fill { position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
 .overlay { position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
-.vp-tools { position: absolute; top: 6px; display: flex; flex-direction: row; }
-.vp-tools.left { left: 6px; }
-.vp-tools.right { right: 6px; }
-.vp-more { display: flex; flex-direction: row; }
-.vp { background-color: rgba(0, 0, 0, 0.3); width: 24px; height: 22px; margin-right: 3px; }
-.vp.on { background-color: var(--accent); }
-.vp img { width: 16px; height: 16px; }
-.rail { position: absolute; top: 36px; bottom: 30px; width: 14px; cursor: ns-resize; }
-.rail.left { left: 10px; }
-.rail.right { right: 10px; }
-.rail-line { position: absolute; left: 6px; top: 0; bottom: 0; width: 1px; background: rgba(255, 255, 255, 0.45); }
+.vp { background-color: rgba(0, 0, 0, 0.3); width: 24px; height: 22px; }
+.vp.corner { position: absolute; right: 6px; top: 6px; }
+.rail { position: absolute; top: 34px; bottom: 34px; width: 14px; cursor: ns-resize; }
+.rail.left { left: 8px; }
+.rail.right { right: 8px; }
+.rail-line { position: absolute; left: 6px; top: 0; bottom: 0; width: 1px; background: rgba(255, 255, 255, 0.4); }
 .rail-knob { position: absolute; left: 2px; width: 9px; height: 9px; margin-top: -5px; border-radius: 5px; background: #fff; border: 1px solid rgba(0, 0, 0, 0.5); }
 .light-handle { position: absolute; width: 30px; height: 30px; margin: -16px 0 0 -16px; border-radius: 16px; border: 1px solid rgba(255, 255, 255, 0.7); background: rgba(255, 220, 140, 0.35); cursor: move; }
 .light-handle img { position: absolute; left: 3px; top: 3px; width: 24px; height: 24px; }
@@ -73,62 +53,82 @@ button img { width: 16px; height: 16px; }
 .light-handle.fill.sel { margin: -14px 0 0 -14px; }
 .split-handle { position: absolute; top: 0; width: 12px; height: 100%; margin-left: -6px; cursor: ew-resize; }
 .split-label { position: absolute; right: 36px; top: 9px; color: #eee; font-size: 10px; background: rgba(0, 0, 0, 0.45); padding: 1px 4px; border-radius: 2px; }
-.sample-hint { position: absolute; left: 0; right: 0; bottom: 8px; text-align: center; color: #fff; font-size: 10px; }
+.sample-hint { position: absolute; left: 0; right: 0; top: 34px; text-align: center; color: #fff; font-size: 10px; }
+
+/* translucent panels over the view */
+.glass { background-color: rgba(24, 26, 30, 0.86); border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 5px; }
+.popover { position: absolute; left: 6px; top: 32px; width: 250px; max-width: 92%; max-height: 80%; padding: 8px; z-index: 50; cursor: default; overflow-y: auto; }
+.pop { display: none; }
+.pop.open { display: block; }
+.pop-title { font-weight: bold; font-size: 10px; letter-spacing: 1px; color: var(--dim); }
+.preset-item { display: flex; flex-direction: row; align-items: center; padding: 3px 4px; border-radius: 3px; cursor: pointer; }
+.preset-item:hover { background: var(--bg3); }
+.preset-item .pv { width: 28px; height: 4px; margin-right: 6px; border: 4px solid var(--line); }
+.preset-item .nm { flex: 1 1 auto; }
+.preset-item .x { color: var(--dim); padding: 0 4px; }
+
+.vp-bottom { position: absolute; left: 6px; right: 6px; bottom: 6px; cursor: default; }
+.tod { padding: 5px 8px 7px 8px; margin-top: 5px; }
+.tod-labels { display: flex; flex-direction: row; justify-content: space-between; font-size: 9px; letter-spacing: 1px; margin-bottom: 6px; }
+.t-rise { color: #f0a060; } .t-sunny { color: #7cc0ff; } .t-gold { color: #f2c46a; } .t-sunset { color: #f07a50; } .t-night { color: #9aa0e0; }
+.tod-track { position: relative; height: 3px; border-radius: 2px; cursor: pointer; margin: 6px 4px 4px 4px; }
+.tod-thumb { position: absolute; top: -6px; width: 8px; height: 14px; margin-left: -4px; background: #fff; border-radius: 2px; border: 1px solid rgba(0, 0, 0, 0.5); }
 
 /* targets row */
-.targets { display: flex; flex-direction: row; align-items: center; padding: 7px 8px; background: var(--bg2); border-top: 1px solid #000; border-bottom: 1px solid #000; }
-.target { width: 24px; height: 24px; border-radius: 13px; border: 1px solid transparent; margin-right: 6px; cursor: pointer; position: relative; }
-.target .dot { position: absolute; left: 2px; top: 2px; width: 18px; height: 18px; border-radius: 10px; border: 1px solid rgba(0, 0, 0, 0.6); }
-.target.big { width: 34px; height: 34px; border-radius: 18px; }
-.target.big .dot { width: 28px; height: 28px; border-radius: 15px; }
+.targets { flex: 0 0 auto; display: flex; flex-direction: row; align-items: center; padding: 5px 8px; background: var(--bg2); border-top: 1px solid #000; border-bottom: 1px solid #000; }
+.target { width: 22px; height: 22px; border-radius: 12px; border: 1px solid transparent; margin-right: 5px; cursor: pointer; position: relative; }
+.target .dot { position: absolute; left: 2px; top: 2px; width: 16px; height: 16px; border-radius: 9px; border: 1px solid rgba(0, 0, 0, 0.6); }
+.target.big { width: 30px; height: 30px; border-radius: 16px; }
+.target.big .dot { width: 24px; height: 24px; border-radius: 13px; }
 .target.sel { border: 2px solid #fff; }
 .target.sel .dot { left: 1px; top: 1px; }
-.sq { width: 30px; height: 30px; margin: 0 0 0 5px; background-color: var(--bg3); border: 1px solid var(--line); }
+.sq { width: 26px; height: 26px; margin-left: 4px; background-color: var(--bg3); border: 1px solid var(--line); }
 .sq.on { background-color: var(--accent); border-color: var(--accent); }
-.ps-chip { width: 30px; height: 30px; margin-left: 5px; border: 1px solid #000; outline: 1px solid var(--line); cursor: pointer; }
+.chips { position: relative; width: 36px; height: 28px; margin-left: 6px; }
+.ps-chip { position: absolute; width: 22px; height: 22px; border: 1px solid #000; outline: 1px solid var(--line); cursor: pointer; }
+.ps-chip.fg { left: 0; top: 0; }
+.ps-chip.bg { left: 12px; top: 6px; }
 
-/* color section */
-.colorsec { padding: 6px 8px 4px 8px; }
+/* color controls */
+.colorsec { flex: 0 0 auto; padding: 6px 8px 2px 8px; }
+.colorsec.floating { background-color: rgba(24, 26, 30, 0.86); border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 5px; cursor: default; }
 .cs-head { display: flex; flex-direction: row; align-items: center; margin-bottom: 6px; }
-.ic { width: 18px; height: 18px; margin-right: 2px; }
-.ic img { width: 14px; height: 14px; }
-.cs-label { color: var(--dim); font-size: 10px; letter-spacing: 1px; margin-left: 4px; }
+.ic { width: 16px; height: 16px; margin-right: 2px; }
+.ic img { width: 13px; height: 13px; }
+.cs-label { color: var(--dim); font-size: 10px; letter-spacing: 1px; margin-left: 2px; white-space: nowrap; overflow: hidden; }
 .hash { color: var(--dim); margin-right: 3px; }
 input.hex, input.num, select { background: var(--bg2); color: var(--text); border: 1px solid var(--line); border-radius: 3px; font-size: 11px; padding: 2px 4px; }
-input.hex { width: 58px; margin-right: 6px; font-family: monospace; }
-select.mode { width: 76px; }
+input.hex { width: 54px; margin-right: 6px; font-family: monospace; }
+select.mode { width: 70px; }
 
-.picker { display: flex; flex-direction: row; align-items: stretch; height: 130px; margin-bottom: 8px; }
-.field { position: relative; flex: 1 1 auto; height: 130px; border: 1px solid var(--line); cursor: crosshair; overflow: hidden; }
+.picker { display: flex; flex-direction: row; align-items: stretch; height: 110px; margin-bottom: 8px; }
+.field { position: relative; flex: 1 1 auto; height: 110px; border: 1px solid var(--line); cursor: crosshair; overflow: hidden; }
 .field-dot { position: absolute; width: 10px; height: 10px; margin: -6px 0 0 -6px; border-radius: 6px; border: 2px solid #fff; }
-.strip { position: relative; width: 16px; height: 130px; margin-left: 6px; border: 1px solid var(--line); cursor: ns-resize; }
-.strip-mark { position: absolute; left: -3px; width: 20px; height: 3px; margin-top: -2px; background: #fff; border: 1px solid #000; }
-.compare { width: 26px; margin-left: 6px; display: flex; flex-direction: column; }
+.strip { position: relative; width: 14px; height: 110px; margin-left: 6px; border: 1px solid var(--line); cursor: ns-resize; }
+.strip-mark { position: absolute; left: -3px; width: 18px; height: 3px; margin-top: -2px; background: #fff; border: 1px solid #000; }
+.compare { width: 24px; margin-left: 6px; display: flex; flex-direction: column; }
 .cmp { flex: 1 1 auto; border: 1px solid var(--line); }
 .cmp.old { cursor: pointer; border-top-width: 0; }
 
-.slider-row { display: flex; flex-direction: row; align-items: center; margin-bottom: 6px; }
-.slider-row .s-label { width: 60px; color: var(--dim); font-size: 10px; }
-.slider-row .s-label.short { width: 22px; color: var(--text); font-weight: bold; font-size: 11px; }
-.track { position: relative; flex: 1 1 auto; height: 8px; border-radius: 2px; background: var(--bg2); cursor: pointer; margin-right: 10px; }
+.slider-row { display: flex; flex-direction: row; align-items: center; margin-bottom: 5px; }
+.slider-row .s-label { width: 58px; color: var(--dim); font-size: 10px; }
+.slider-row .s-label.short { width: 18px; color: var(--text); font-weight: bold; font-size: 11px; }
+.track { position: relative; flex: 1 1 auto; height: 7px; border-radius: 2px; background: var(--bg2); cursor: pointer; margin-right: 10px; }
 .track .fillbar { position: absolute; left: 0; top: 0; height: 100%; background: var(--accent); opacity: 0.6; border-radius: 2px; }
-.track .thumb { position: absolute; top: -5px; width: 10px; height: 16px; margin-left: -5px; background: #fff; border-radius: 2px; border: 1px solid rgba(0, 0, 0, 0.5); }
+.track .thumb { position: absolute; top: -5px; width: 9px; height: 15px; margin-left: -5px; background: #fff; border-radius: 2px; border: 1px solid rgba(0, 0, 0, 0.5); }
 .slider-row input.num { width: 40px; text-align: right; }
 
-.pal-head { color: var(--dim); font-size: 10px; letter-spacing: 1px; margin: 4px 0 4px 0; }
-.pal-head .hint { letter-spacing: 0; margin-left: 4px; font-size: 9px; }
-.palette { display: flex; flex-direction: row; margin-bottom: 6px; }
-.pal { flex: 1 1 auto; margin-right: 4px; cursor: pointer; }
-.pal:last-child { margin-right: 0; }
-.pal .sw { height: 22px; border: 1px solid var(--line); border-radius: 2px; }
-.pal .nm { color: var(--dim); font-size: 9px; margin-top: 2px; }
-.pal .hx { font-family: monospace; font-size: 9px; }
+.palette { display: flex; flex-direction: row; height: 14px; margin: 2px 0 4px 0; cursor: pointer; }
+.pal { flex: 1 1 auto; height: 14px; border: 1px solid rgba(0, 0, 0, 0.4); }
 
-.swatches { display: flex; flex-direction: row; flex-wrap: wrap; min-height: 20px; margin: 6px 0; }
-.swatches .sw { width: 20px; height: 20px; margin: 0 4px 4px 0; border: 1px solid var(--line); cursor: pointer; }
+.swatches { display: flex; flex-direction: row; flex-wrap: wrap; min-height: 18px; margin: 0 0 6px 0; }
+.swatches .sw { width: 18px; height: 18px; margin: 0 3px 3px 0; border: 1px solid var(--line); cursor: pointer; }
 .swatches .empty { color: var(--dim); font-size: 10px; }
-.status { color: var(--dim); font-size: 10px; padding: 2px 8px 6px 8px; min-height: 12px; }
+.statusbar { flex: 0 0 auto; display: flex; flex-direction: row; align-items: center; height: 18px; padding: 0 8px; background: var(--bg2); border-top: 1px solid #000; }
+.status { color: var(--dim); font-size: 9px; }
+.mode-label { color: var(--dim); font-size: 9px; letter-spacing: 1px; }
 
-/* layouts */
-#app.compact .viewport { height: 170px; }
-#app.classic .viewport, #app.classic .rail { display: none; }
+/* Classic layout: no 3D view, color field always shown */
+#app.classic .viewport { flex: 0 0 auto; height: 0; min-height: 0; }
+#app.classic .picker { height: 150px; }
+#app.classic .field, #app.classic .strip { height: 150px; }

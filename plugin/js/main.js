@@ -36,9 +36,10 @@
   state.colors = Object.assign({}, DEFAULTS.colors, state.colors || {});
   var ui = Object.assign({
     target: "shape", mode: "HSB", layout: "full", sampling: false, locked: false, trueColor: false, split: 0.5,
-    overlays: true, showField: false, collapsed: false, sync: true, selLight: 0, brush: 30
+    overlays: true, showField: false, floating: false, sync: true, selLight: 0, brush: 30
   }, store.get("ui", {}));
   ui.sampling = false;
+  if (ui.layout !== "classic") ui.layout = "full";
   var favorites = store.get("favorites", []);
   var history = store.get("history", []);
   var userPresets = store.get("presets", []);
@@ -165,9 +166,11 @@
   }
 
   /* ---------- rendering ---------- */
-  var renderPending = false, renderHQ = false, hqTimer = null;
+  var renderPending = false, renderHQ = false, hqTimer = null, jobToken = 0;
   var raf = window.requestAnimationFrame ? window.requestAnimationFrame.bind(window) : function (f) { return setTimeout(f, 16); };
 
+  /* Interactive frames are small and synchronous; the sharp frame is computed a few rows at a time
+   * between events, and is thrown away if anything changes before it finishes. */
   function requestRender(hq) {
     renderHQ = renderHQ || hq;
     if (renderPending) return;
@@ -175,8 +178,10 @@
     raf(function () {
       renderPending = false;
       var q = renderHQ; renderHQ = false;
-      doRender(q);
-      if (!q) { clearTimeout(hqTimer); hqTimer = setTimeout(function () { requestRender(true); }, 220); }
+      jobToken++;
+      clearTimeout(hqTimer);
+      if (q) startSharpRender();
+      else { renderPreview(); hqTimer = setTimeout(function () { requestRender(true); }, 160); }
     });
   }
 
@@ -184,22 +189,34 @@
     var r = $("viewport").getBoundingClientRect();
     return { w: r.width || 300, h: r.height || 300 };
   }
-
-  function doRender(hq) {
-    var S = sceneParams();
-    if (ui.layout === "classic") {
-      lastRender = R.render(S, 64, 64, 1);
-      renderPalette();
-      return;
-    }
+  function frameSize(base) {
     var sz = viewSize();
-    var base = hq ? 300 : 150;
-    var w = base, h = Math.max(40, Math.round(base * sz.h / sz.w));
-    var res = R.render(S, w, h, hq ? 2 : 1);
+    return { w: base, h: clamp(Math.round(base * sz.h / Math.max(1, sz.w)), 40, base * 3) };
+  }
+  function showFrame(res, S) {
     lastRender = res;
-    $("previewImg").src = P.dataUrl(res.rgb, w, h);
-    placeOverlay(S, w / h);
+    if (ui.layout !== "classic") {
+      $("previewImg").src = P.dataUrl(res.rgb, res.w, res.h);
+      placeOverlay(S, res.w / res.h);
+    }
     renderPalette();
+  }
+  function renderPreview() {
+    var S = sceneParams();
+    if (ui.layout === "classic") { showFrame(R.render(S, 64, 64, 1), S); return; }
+    var f = frameSize(140);
+    showFrame(R.render(S, f.w, f.h, 1), S);
+  }
+  function startSharpRender() {
+    var S = sceneParams();
+    if (ui.layout === "classic") { showFrame(R.render(S, 64, 64, 1), S); return; }
+    var f = frameSize(clamp(Math.round(viewSize().w), 200, 360));
+    var token = jobToken, job = R.renderJob(S, f.w, f.h, 2);
+    (function tick() {
+      if (token !== jobToken) return;
+      if (job.step(14)) showFrame(job.result(), S);
+      else setTimeout(tick, 0);
+    })();
   }
 
   function placeOverlay(S, aspect) {
@@ -221,7 +238,6 @@
     $("railLightKnob").style.top = ((1 - (el + 5) / 94) * 100) + "%";
     $("railCamKnob").style.top = ((1 - (state.pitch - 2) / 68) * 100) + "%";
     $("overlay").style.display = ui.overlays ? "block" : "none";
-    $("vpMore").style.display = ui.overlays ? "flex" : "none";
     $("btnResetScene").style.display = ui.overlays ? "flex" : "none";
     var sh = $("splitHandle"), lbl = $("splitLabel");
     cls(sh, "hidden", !ui.trueColor); cls(lbl, "hidden", !ui.trueColor);
@@ -363,10 +379,7 @@
     var box = $("palette"); box.innerHTML = "";
     paletteColors().forEach(function (c) {
       var cell = document.createElement("div"); cell.className = "pal"; cell.title = c.name + " " + c.hex;
-      var sw = document.createElement("div"); sw.className = "sw"; sw.style.backgroundColor = c.hex;
-      var nm = document.createElement("div"); nm.className = "nm"; nm.textContent = c.name;
-      var hx = document.createElement("div"); hx.className = "hx"; hx.textContent = c.hex.slice(1);
-      cell.appendChild(sw); cell.appendChild(nm); cell.appendChild(hx);
+      cell.style.backgroundColor = c.hex;
       cell.addEventListener("click", function (e) {
         if (e.altKey) { pushBackground(c.hex); status("Background " + c.hex); return; }
         if (c.name === "Base") pushForeground(c.hex, true); else sendToForeground(c.hex);
@@ -526,8 +539,29 @@
     $("bgChip").style.backgroundColor = host.bg;
   }
 
-  var LAYOUT_NAMES = { full: "Full", compact: "Compact", classic: "Classic" };
+  /* time-of-day bar: left edge is sunrise (5h), right edge is night (22h) */
+  var TOD_START = 5, TOD_SPAN = 17;
+  function todPos(h) { return clamp((h - TOD_START) / TOD_SPAN, 0, 1); }
+  function todHour(t) { return TOD_START + clamp(t, 0, 1) * TOD_SPAN; }
+  var refreshPending = false, refreshHQ = false;
+  /* Many events can arrive per frame while dragging; do the DOM and image work once per frame. */
   function refreshAll(hq) {
+    refreshHQ = refreshHQ || hq;
+    if (refreshPending) return;
+    refreshPending = true;
+    raf(function () { refreshPending = false; var q = refreshHQ; refreshHQ = false; doRefresh(q); });
+  }
+
+  var MODE_LABEL = { shape: "BASE MODE", sky: "SKY MODE", horizon: "HORIZON MODE", ground: "GROUND MODE", light: "KEY LIGHT MODE", fill: "FILL LIGHT MODE" };
+  function placeColorSection() {
+    var cs = $("colorsec"), slot = $("floatSlot");
+    var want = ui.floating && ui.layout !== "classic";
+    if (want && cs.parentNode !== slot) slot.appendChild(cs);
+    else if (!want && cs.parentNode === slot) $("app").insertBefore(cs, document.querySelector(".statusbar"));
+    cls(cs, "floating", want);
+  }
+
+  function doRefresh(hq) {
     var hex = targetHex();
     if (document.activeElement !== $("hexInput")) $("hexInput").value = hex.slice(1);
     $("targetLabel").textContent = TARGET_LABEL[ui.target];
@@ -541,26 +575,27 @@
     $("tHorizon").style.backgroundColor = L.horizon;
     $("tGround").style.backgroundColor = L.ground;
     each(document.querySelectorAll(".target"), function (t) { cls(t, "sel", t.getAttribute("data-t") === ui.target); });
-    setSeg("shapeSeg", state.shape); setSeg("lightModeSeg", state.lightMode);
+    setSeg("shapeSeg", state.shape); setSeg("layoutSeg", ui.layout);
     cls($("spotBtn"), "on", state.spot); cls($("fillOnBtn"), "on", state.fillOn);
     cls($("toonBtn"), "on", state.toon); cls($("chromeBtn"), "on", state.chrome);
     cls($("syncBtn"), "on", ui.sync);
-    cls($("btnTrue"), "on", ui.trueColor); cls($("btnEye"), "on", !ui.overlays);
+    cls($("btnTrue"), "on", ui.trueColor); cls($("btnEye"), "on", ui.overlays);
     cls($("btnSample"), "on", ui.sampling); cls($("btnLock"), "on", ui.locked);
     $("lockImg").src = ui.locked ? "icons/ui/lock.svg" : "icons/ui/unlock.svg";
     cls($("sampleHint"), "hidden", !ui.sampling);
     $("viewport").style.cursor = ui.sampling ? "crosshair" : "";
     var app = $("app");
-    cls(app, "compact", ui.layout === "compact"); cls(app, "classic", ui.layout === "classic");
-    $("layoutName").textContent = LAYOUT_NAMES[ui.layout];
-    $("csBody").style.display = ui.collapsed ? "none" : "block";
-    /* swap icons instead of CSS transforms, which UXP may not apply */
-    $("btnCollapse").querySelector("img").src = ui.collapsed ? "icons/ui/chevron.svg" : "icons/ui/collapse.svg";
+    cls(app, "classic", ui.layout === "classic");
+    placeColorSection();
+    cls($("btnFloat"), "on", ui.floating);
+    $("modeLabel").textContent = MODE_LABEL[ui.target];
     var fieldVisible = ui.showField || ui.layout === "classic";
     $("fieldWrap").style.display = fieldVisible ? "flex" : "none";
     $("btnField").querySelector("img").src = fieldVisible ? "icons/ui/collapse.svg" : "icons/ui/chevron.svg";
     $("lightIntRow").style.display = ui.target === "light" || ui.target === "fill" ? "block" : "none";
-    $("timeSliders").style.opacity = state.lightMode === "time" ? "1" : "0.5";
+    var timeOn = state.lightMode === "time";
+    cls($("btnTime"), "on", timeOn); cls($("todBar"), "hidden", !timeOn || ui.layout === "classic");
+    $("todThumb").style.left = (todPos(state.time) * 100) + "%";
     allSliders.forEach(function (s) { s.update(); });
     updateChannelGradients();
     renderField();
@@ -644,10 +679,10 @@
   }
 
   function buildSliders() {
-    $("timeSliders").innerHTML = ""; $("keySliders").innerHTML = ""; $("fillSliders").innerHTML = "";
+    $("keySliders").innerHTML = ""; $("fillSliders").innerHTML = "";
     $("ambientSliders").innerHTML = ""; $("materialSliders").innerHTML = ""; $("brushRow").innerHTML = ""; $("lightIntRow").innerHTML = "";
     allSliders = [];
-    addSlider("timeSliders", "Time", "time", 0, 24, 1, { time: true, unit: "h" });
+    $("todImg").src = gradientUrl(function (t) { return C.hexToRgb(timeOfDay(todHour(t)).horizon); }, 64);
     addSlider("keySliders", "Direction", "az", -180, 180, 0, { bake: true, unit: "°" });
     addSlider("keySliders", "Height", "el", -5, 89, 0, { bake: true, unit: "°" });
     addSlider("keySliders", "Intensity", "intensity", 0, 2, 2);
@@ -691,13 +726,22 @@
       if (!inside) showPop(null);
     });
 
-    $("btnLayout").addEventListener("click", function () {
-      ui.layout = ui.layout === "full" ? "compact" : ui.layout === "compact" ? "classic" : "full";
-      persist(); refreshAll(true); status("Layout: " + LAYOUT_NAMES[ui.layout]);
+    onSeg("layoutSeg", function (v) { ui.layout = v; persist(); refreshAll(true); });
+    $("btnFloat").addEventListener("click", function () { ui.floating = !ui.floating; persist(); refreshAll(true); });
+    $("btnTime").addEventListener("click", function () {
+      beginEdit();
+      if (state.lightMode === "time") bakeToManual(); else state.lightMode = "time";
+      endEdit(); refreshAll(true);
+    });
+    noDrag($("vpBottom"));
+    dragOn($("todTrack"), {
+      immediate: true,
+      start: function () { beginEdit(); },
+      move: function (p) { state.lightMode = "time"; state.time = todHour(p[0]); refreshAll(false); },
+      end: function () { endEdit(); }
     });
 
     onSeg("shapeSeg", function (v) { beginEdit(); state.shape = v; endEdit(); });
-    onSeg("lightModeSeg", function (v) { beginEdit(); if (v === "manual") bakeToManual(); else state.lightMode = "time"; endEdit(); refreshAll(true); });
     $("spotBtn").addEventListener("click", function () { beginEdit(); state.spot = !state.spot; endEdit(); });
     $("fillOnBtn").addEventListener("click", function () { beginEdit(); state.fillOn = !state.fillOn; endEdit(); });
     $("toonBtn").addEventListener("click", function () { beginEdit(); state.toon = !state.toon; endEdit(); });
@@ -809,8 +853,7 @@
     });
 
     // color section
-    $("btnCollapse").addEventListener("click", function () { ui.collapsed = !ui.collapsed; persist(); refreshAll(false); });
-    $("btnField").addEventListener("click", function () { ui.showField = !ui.showField; if (ui.collapsed) ui.collapsed = false; persist(); refreshAll(false); });
+    $("btnField").addEventListener("click", function () { ui.showField = !ui.showField; persist(); refreshAll(false); });
     $("modeSelect").addEventListener("change", function () { ui.mode = $("modeSelect").value; buildChannelSliders(); persist(); refreshAll(false); });
     $("cmpOld").addEventListener("click", function () { if (ui.target === "shape") applyShapeHex(previousHex); });
     var hexIn = $("hexInput");
@@ -886,15 +929,8 @@
     pushBackground("#FFFFFF"); pushForeground("#000000", true); refreshAll(true);
   }
 
-  /* Fit the viewport to the panel height in the Full layout. */
-  function fitViewport() {
-    if (ui.layout !== "full") { $("viewport").style.height = ""; return; }
-    var total = window.innerHeight || 700;
-    var other = $("topbar").offsetHeight + document.querySelector(".targets").offsetHeight +
-      document.querySelector(".colorsec").offsetHeight + $("status").offsetHeight;
-    var w = $("viewport").getBoundingClientRect().width || 300;
-    $("viewport").style.height = clamp(total - other - 2, 180, Math.max(180, w * 1.05)) + "px";
-  }
+  /* The app is a flex column as tall as the panel; the view takes whatever height is left. */
+  function fitApp() { $("app").style.height = Math.max(200, window.innerHeight || 600) + "px"; }
 
   /* ---------- start ---------- */
   function init() {
@@ -904,18 +940,19 @@
     B.getColors().then(function (c) {
       if (c.fg) { host.fg = c.fg; if (ui.sync && !ui.locked) { state.colors.shape = c.fg; previousHex = c.fg; } }
       if (c.bg) { host.bg = c.bg; state.bg = c.bg; }
-      refreshAll(false); fitViewport(); requestRender(true);
+      fitApp(); refreshAll(true);
     });
     setInterval(pollHost, 600);
     B.onHostColorEvent(function () { setTimeout(pollHost, 50); });
-    window.addEventListener("resize", function () { fitViewport(); requestRender(true); });
-    var lastLayout = ui.layout, lastCollapsed = ui.collapsed, lastField = ui.showField;
+    window.addEventListener("resize", function () { fitApp(); requestRender(false); });
+    /* Panels can be resized without a resize event; watch the view size and re-render when it settles. */
+    var lastW = 0, lastH = 0;
     setInterval(function () {
-      if (ui.layout !== lastLayout || ui.collapsed !== lastCollapsed || ui.showField !== lastField) {
-        lastLayout = ui.layout; lastCollapsed = ui.collapsed; lastField = ui.showField;
-        fitViewport(); requestRender(true);
-      }
-    }, 200);
+      if (ui.layout === "classic") return;
+      if ((window.innerHeight || 0) + "px" !== $("app").style.height) fitApp();
+      var r = $("viewport").getBoundingClientRect();
+      if (Math.abs(r.width - lastW) > 1 || Math.abs(r.height - lastH) > 1) { lastW = r.width; lastH = r.height; requestRender(false); }
+    }, 250);
   }
 
   window.ChromaPicker = { state: state, ui: ui, refresh: refreshAll, undo: undo, redo: redo, host: host };
