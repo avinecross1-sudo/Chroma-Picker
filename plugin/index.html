@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Chroma Picker</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="app">
+    <!-- Top bar: Photoshop color chips, hex, sync -->
+    <div class="row topbar">
+      <div class="chips">
+        <div id="bgChip" class="chip bg" title="Background color (click to edit, Alt-click a swatch to set)"></div>
+        <div id="fgChip" class="chip fg" title="Foreground color"></div>
+      </div>
+      <div class="col tight">
+        <button id="swapBtn" class="icon" title="Swap foreground / background (X)">⇄</button>
+        <button id="resetBtn" class="icon" title="Default black / white (D)">◩</button>
+      </div>
+      <input id="hexInput" class="hex" type="text" maxlength="7" spellcheck="false" value="#000000">
+      <button id="copyHexBtn" class="small" title="Copy hex">Copy</button>
+      <div class="spacer"></div>
+      <button id="syncBtn" class="small toggle on" title="Two-way sync with Photoshop's color chips">Sync</button>
+      <button id="compactBtn" class="small" title="Hide or show the 3D view">3D</button>
+    </div>
+
+    <!-- 3D lit preview -->
+    <div id="previewWrap" class="section">
+      <div id="preview" class="preview">
+        <img id="previewImg" class="fill" alt="">
+        <div id="lightDot" class="light-dot" title="Key light"></div>
+        <div id="splitHandle" class="split-handle hidden"></div>
+        <div id="previewLabel" class="preview-label hidden">Local color</div>
+      </div>
+      <div class="row toolbar">
+        <div class="seg" id="dragMode">
+          <button data-v="light" class="on" title="Drag to move the key light">Light</button>
+          <button data-v="orbit" title="Drag to orbit the camera">Orbit</button>
+          <button data-v="sample" title="Click the render to send that lit shade to the foreground">Sample</button>
+        </div>
+        <div class="spacer"></div>
+        <div class="seg" id="shapeSeg">
+          <button data-v="sphere" class="on">Sphere</button>
+          <button data-v="cube">Cube</button>
+        </div>
+        <button id="trueColorBtn" class="small toggle" title="Compare the lit render with the unlit local color (arrow keys move the split)">True</button>
+      </div>
+      <div class="row targets seg wide" id="targetSeg">
+        <button data-v="shape" class="on">Shape</button>
+        <button data-v="sky">Sky</button>
+        <button data-v="horizon">Horizon</button>
+        <button data-v="ground">Ground</button>
+        <button data-v="light">Light</button>
+      </div>
+    </div>
+
+    <!-- Picker -->
+    <div class="section">
+      <div class="row seg wide" id="modeSeg">
+        <button data-v="HSB" class="on">HSB</button>
+        <button data-v="RGB">RGB</button>
+        <button data-v="LAB">Lab</button>
+        <button data-v="CMYK">CMYK</button>
+        <button data-v="CUBE">Hue Cube</button>
+      </div>
+      <div class="row picker">
+        <div id="field" class="field">
+          <img id="fieldImg" class="fill" alt="">
+          <div id="fieldDot" class="field-dot"></div>
+        </div>
+        <div id="strip" class="strip">
+          <img id="stripImg" class="fill" alt="">
+          <div id="stripMark" class="strip-mark"></div>
+        </div>
+        <div class="compare">
+          <div id="cmpNew" class="cmp" title="Current"></div>
+          <div id="cmpOld" class="cmp" title="Previous (click to restore)"></div>
+        </div>
+      </div>
+      <div id="sliders"></div>
+    </div>
+
+    <!-- Lighting -->
+    <div class="section" id="lightingSection">
+      <div class="section-head" data-toggle="lightingBody">Lighting</div>
+      <div id="lightingBody">
+        <div class="row">
+          <div class="seg" id="lightModeSeg">
+            <button data-v="manual" class="on">Manual</button>
+            <button data-v="time">Time of day</button>
+          </div>
+          <div class="spacer"></div>
+          <button id="spotBtn" class="small toggle" title="Spot light instead of directional sun">Spot</button>
+        </div>
+        <div id="lightSliders"></div>
+        <div class="row">
+          <select id="presetSelect" title="Lighting setups"></select>
+          <button id="savePresetBtn" class="small" title="Save the current lighting as a setup">Save</button>
+          <button id="deletePresetBtn" class="small" title="Delete the selected saved setup">Delete</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Material -->
+    <div class="section">
+      <div class="section-head" data-toggle="materialBody">Material</div>
+      <div id="materialBody">
+        <div id="materialSliders"></div>
+        <div class="row">
+          <button id="toonBtn" class="small toggle" title="Three-tone cel shading">Toon</button>
+          <button id="chromeBtn" class="small toggle" title="Metallic reflections tinted by the color">Chrome</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Palette from render -->
+    <div class="section">
+      <div class="section-head" data-toggle="paletteBody">Lit palette</div>
+      <div id="paletteBody">
+        <div id="paletteRows"></div>
+        <div class="hint">Estimated from the render. Click: set foreground and copy hex. Alt-click: set background.</div>
+      </div>
+    </div>
+
+    <!-- Favorites and history -->
+    <div class="section">
+      <div class="section-head" data-toggle="swatchBody">Swatches</div>
+      <div id="swatchBody">
+        <div class="row">
+          <span class="label">Pinned</span>
+          <div class="spacer"></div>
+          <button id="pinBtn" class="small" title="Pin the current color">+ Pin</button>
+        </div>
+        <div id="favorites" class="swatches"></div>
+        <div class="row"><span class="label">History</span></div>
+        <div id="history" class="swatches"></div>
+        <div class="row">
+          <button id="exportAseBtn" class="small" title="Export palette and pinned colors as Adobe .ase">Export .ase</button>
+          <button id="exportGplBtn" class="small" title="Export palette and pinned colors as .gpl (Krita, GIMP)">Export .gpl</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="row footer">
+      <button id="undoBtn" class="small" title="Undo (Ctrl/Cmd+Z)">Undo</button>
+      <button id="redoBtn" class="small" title="Redo (Ctrl/Cmd+Shift+Z)">Redo</button>
+      <div class="spacer"></div>
+      <span id="status" class="status"></span>
+    </div>
+  </div>
+
+  <script src="js/color.js"></script>
+  <script src="js/png.js"></script>
+  <script src="js/render.js"></script>
+  <script src="js/swatches.js"></script>
+  <script src="js/bridge.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
