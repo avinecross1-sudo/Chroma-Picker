@@ -41,8 +41,10 @@
     var fwd = norm(sub(target, pos));
     var right = norm(cross(fwd, [0, 1, 0]));
     var up = cross(right, fwd);
-    /* keep the horizontal field of view in tall panels */
-    var tanF = Math.tan(19 * DEG) * ((aspect || 1) < 1.25 ? 1.25 / (aspect || 1) : 1);
+    /* The subject grows with the panel's height, and also with its width: in tall panels the horizontal
+     * field of view is kept, and in wide panels the camera zooms in (up to a limit, so the subject still fits). */
+    var a = aspect || 1;
+    var tanF = Math.tan(19 * DEG) * (a < 1.25 ? 1.25 / a : Math.max(0.66, Math.pow(1.25 / a, 0.75)));
     return { pos: pos, fwd: fwd, right: right, up: up, tanF: tanF, aspect: aspect || 1 };
   }
 
@@ -157,7 +159,19 @@
     var wH = 0.32 * (1 - t * t);
     var wS = (1 - wH) * Math.max(0, 0.5 + 0.5 * t);
     var wG = (1 - wH) * Math.max(0, 0.5 - 0.5 * t);
-    return add(add(mul(S.horizon, wH), mul(S.sky, wS)), mul(S.groundLit, wG * S.bounce));
+    return add(mul(S.horizon, wH), mul(S.sky, wS));
+  }
+
+  /* Diffuse light bounced up from the ground. It lights the lower half of the subject in the ground's
+   * color whatever the reflectivity, and part of it ignores the base color so the tint always shows. */
+  function groundBounce(S, n, albedo, h) {
+    var down = Math.max(0, 0.5 - 0.5 * n[1]);
+    var wG = down * Math.sqrt(down) * 1.4;
+    if (wG <= 0 || !S.bounce) return [0, 0, 0];
+    var occl = 1 - 0.3 * Math.exp(-h * 3.2) * Math.max(0, -n[1]);
+    var src = lerp3(S.groundLit, S.ground, 0.55);
+    var alb = add(mul(albedo, 0.7), [0.12, 0.12, 0.12]);
+    return mul(mulv(alb, src), wG * S.bounce * (0.45 + S.ambient) * occl);
   }
 
   function lightAt(Lt, p) {
@@ -177,7 +191,7 @@
     var w = 0.12 + S.subsurface * 0.6, keyNdl = 0;
     var h = p[1] - GROUND_Y;
     var ao = 1 - 0.55 * Math.exp(-h * 3.2) * Math.max(0, -n[1]);
-    var c = mulv(albedo, mul(irradiance(S, n), S.ambient * ao));
+    var c = add(mulv(albedo, mul(irradiance(S, n), S.ambient * ao)), groundBounce(S, n, albedo, h));
     for (var i = 0; i < S.lights.length; i++) {
       var Lt = S.lights[i];
       if (Lt.intensity <= 0) continue;
@@ -230,9 +244,11 @@
     return lerp3(g, S.horizon, Math.min(1, far));
   }
 
+  /* Depth fog starts at the main subject, so it stays clear and only what is behind it fades. */
   function fog(S, c, dist) {
     if (!S.fog) return c;
-    return lerp3(c, S.horizon, Math.min(1, S.fog * (dist / 7)));
+    var behind = Math.max(0, dist - (S.fogStart || 0));
+    return lerp3(c, S.horizon, Math.min(1, S.fog * (1 - Math.exp(-behind / 2.5))));
   }
 
   /* gentle shoulder so bright highlights roll off instead of clipping */
@@ -249,7 +265,7 @@
     var tg = d[1] < -1e-6 ? (GROUND_Y - cam.pos[1]) / d[1] : Infinity;
     if (h && h.t < tg) {
       var sh = shadeObject(S, h.p, h.n, mul(d, -1), S.albedo);
-      return { c: fog(S, sh.c, h.t), obj: true, main: h.main !== false, n: h.n, ndl: sh.ndl };
+      return { c: h.main !== false ? sh.c : fog(S, sh.c, h.t), obj: true, main: h.main !== false, n: h.n, ndl: sh.ndl };
     }
     if (tg < Infinity && tg > 0) return { c: fog(S, shadeGround(S, add(cam.pos, mul(d, tg)), tg), tg), obj: false };
     return { c: env(S, d), obj: false };
@@ -273,16 +289,20 @@
    *    specular, reflectivity, subsurface, sheen, softness, toon, chrome, fog, contrast,
    *    shape ("sphere" | "trio" | "cube"), yaw, pitch, split (null or 0..1), flatAlbedoRgb (sRGB 0..255)
    * Returns { rgb: Uint8Array, w, h, palette } */
-  function render(S0, w, h, ss) {
+  /* A render that can run in time slices, so the panel stays responsive while a sharp frame is computed.
+   * job.step(ms) renders rows for about ms milliseconds and returns true when finished; job.result() gives the frame. */
+  function renderJob(S0, w, h, ss) {
     var S = prepare(S0);
     ss = ss || 1;
     var cam = makeCamera(S.yaw, S.pitch, w / h, camDist(S.shape));
+    S.fogStart = Math.sqrt(dot(cam.pos, cam.pos));
     var out = new Uint8Array(w * h * 3);
     var buckets = { hi: [], mid: [], shadow: [], bounce: [] }, allLum = [];
     var splitX = S.split == null ? Infinity : Math.round(S.split * w);
     var flat = S.flatAlbedoRgb || [128, 128, 128];
     var inv = 1 / (ss * ss);
-    for (var y = 0; y < h; y++) {
+    var y = 0, done = null;
+    function row(y) {
       for (var x = 0; x < w; x++) {
         var acc = [0, 0, 0], cov = 0, center = null;
         for (var sy = 0; sy < ss; sy++) for (var sx = 0; sx < ss; sx++) {
@@ -306,6 +326,7 @@
         }
       }
     }
+    function finish() {
     if (allLum.length) {
       allLum.sort(function (a, b) { return b[0] - a[0]; });
       for (var i = 0, top = Math.max(1, Math.floor(allLum.length * 0.03)); i < top; i++) buckets.hi.push(allLum[i][1]);
@@ -328,14 +349,29 @@
       palette[k] = encodeOut(S, c);
     });
     return { rgb: out, w: w, h: h, palette: palette };
+    }
+    var now = typeof performance !== "undefined" && performance.now ? function () { return performance.now(); } : function () { return Date.now(); };
+    return {
+      step: function (ms) {
+        if (done) return true;
+        var t0 = now();
+        while (y < h) { row(y); y++; if (ms != null && now() - t0 >= ms) break; }
+        if (y >= h) done = finish();
+        return !!done;
+      },
+      result: function () { return done; },
+      progress: function () { return y / h; }
+    };
   }
+
+  function render(S0, w, h, ss) { var job = renderJob(S0, w, h, ss); job.step(null); return job.result(); }
 
   function lightHandle(S, aspect, i) {
     var cam = makeCamera(S.yaw, S.pitch, aspect || 1, camDist(S.shape));
     return project(cam, add([0, -0.2, 0], mul(S.lights[i || 0].dir, S.shape === "trio" ? 2.4 : 1.8)));
   }
 
-  var api = { render: render, dirFromAngles: dirFromAngles, lightHandle: lightHandle, makeCamera: makeCamera, project: project };
+  var api = { render: render, renderJob: renderJob, dirFromAngles: dirFromAngles, lightHandle: lightHandle, makeCamera: makeCamera, project: project };
   root.CPRender = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })(typeof window !== "undefined" ? window : globalThis);

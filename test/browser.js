@@ -41,21 +41,29 @@ const { chromium } = require('playwright'); const path = require('path');
   const tr = await (await pg.$$('#sliders .track'))[0].boundingBox();
   await pg.mouse.click(tr.x + tr.width * 0.6, tr.y + tr.height / 2); await pg.waitForTimeout(300);
   await log('hue');
-  await pg.click('#btnHistory'); await pg.waitForTimeout(150); await pg.screenshot({ path: out + '/w_hist.png' });
+  await pg.click('#btnMenu'); await pg.waitForTimeout(150); await pg.screenshot({ path: out + '/w_hist.png' });
   await pg.click('#undoBtn'); await pg.waitForTimeout(200); await log('undo');
-  for (const id of ['#btnTime', '#btnLights', '#btnPresets', '#btnSettings', '#btnFav', '#btnMaterial']) {
+  for (const id of ['#btnLights', '#btnPresets', '#btnMenu', '#btnMaterial']) {
     await pg.keyboard.press('Escape'); await pg.click(id); await pg.waitForTimeout(250); await pg.screenshot({ path: out + '/w_' + id.slice(4).toLowerCase() + '.png' });
   }
   await pg.keyboard.press('Escape');
-  await pg.click('#btnTime'); await pg.click('#lightModeSeg button[data-v="time"]'); await pg.waitForTimeout(300); await pg.click('#btnTime');
+  await pg.click('#btnTime'); await pg.waitForTimeout(400);
+  const tt = await (await pg.$('#todTrack')).boundingBox();
+  await pg.mouse.click(tt.x + tt.width * 0.75, tt.y + tt.height / 2); await pg.waitForTimeout(500);
+  console.log('time', await pg.evaluate(() => [ChromaPicker.state.lightMode, ChromaPicker.state.time.toFixed(1), document.getElementById('modeLabel').textContent]));
+  await pg.screenshot({ path: out + '/w_tod.png' });
+  await pg.click('#btnFloat'); await pg.waitForTimeout(500); await pg.screenshot({ path: out + '/w_float.png' });
+  await pg.click('#btnFloat'); await pg.click('#btnTime'); await pg.waitForTimeout(300);
   await pg.click('#btnSample'); await pg.mouse.click(vp.x + vp.width * 0.5, vp.y + vp.height * 0.5); await pg.waitForTimeout(200); await log('sample');
   await pg.click('#btnLock'); await pg.evaluate(() => { CPBridge._mock.fg = '#11AA55'; }); await pg.waitForTimeout(1500); await log('locked host change');
   await pg.click('#btnLock'); await pg.evaluate(() => { CPBridge._mock.fg = '#AA3366'; }); await pg.waitForTimeout(1500); await log('unlocked host change');
   await pg.keyboard.press('x'); await pg.waitForTimeout(200); await log('swap');
   await pg.click('#btnTrue'); await pg.click('#btnField'); await pg.waitForTimeout(600); await pg.screenshot({ path: out + '/w2.png' });
   for (const m of ['RGB', 'LAB', 'CMYK', 'CUBE', 'HSB']) { await pg.selectOption('#modeSelect', m); await pg.waitForTimeout(100); }
-  await pg.click('#btnLayout'); await pg.waitForTimeout(400); await pg.screenshot({ path: out + '/w_compact.png' });
-  await pg.click('#btnLayout'); await pg.waitForTimeout(400); await pg.screenshot({ path: out + '/w_classic.png' });
-  await pg.click('#btnLayout');
+  await pg.setViewportSize({ width: 260, height: 520 }); await pg.waitForTimeout(900); await pg.screenshot({ path: out + '/w_small.png' });
+  await pg.setViewportSize({ width: 320, height: 760 }); await pg.waitForTimeout(600);
+  await pg.click('#btnMenu'); await pg.click('#layoutSeg button[data-v="classic"]'); await pg.waitForTimeout(400); await pg.keyboard.press('Escape'); await pg.screenshot({ path: out + '/w_classic.png' });
+  await pg.click('#btnMenu'); await pg.click('#layoutSeg button[data-v="full"]'); await pg.keyboard.press('Escape');
+  const t0 = Date.now(); await pg.evaluate(() => { for (let i = 0; i < 20; i++) { ChromaPicker.state.az += 3; ChromaPicker.refresh(false); } }); console.log('20 refresh calls ms', Date.now() - t0);
   console.log('errors', errs); await b.close();
 })();
