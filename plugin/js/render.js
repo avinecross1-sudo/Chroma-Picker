@@ -381,6 +381,12 @@
       var dif = S.toon ? (ndl > 0.5 ? 1 : ndl > 0.02 ? 0.55 : 0) : Math.max(0, (ndl + w) / (1 + w));
       /* A rim light only catches the edges that turn away from the camera. It is added after the sheen
        * so the bright outline is not washed out, and partly keeps the light's own color. */
+      /* On a head that edge test would switch whole planes on and off as the camera orbits, so there the rim
+       * light is a plain light from its own direction: it lights the planes that face it, wherever you look from. */
+      if (Lt.rim && mesh) {
+        rimC = add(rimC, mulv(lerp3(albedo, [1, 1, 1], 0.25), mul(kl.rad, dif * 0.85)));
+        continue;
+      }
       if (Lt.rim) {
         var edge = 1 - Math.max(0, dot(n, V));
         var rd = Math.max(0, (ndl + 0.45) / 1.45) * edge * edge * 1.6;
