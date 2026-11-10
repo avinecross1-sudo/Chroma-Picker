@@ -6,6 +6,30 @@ Inspired by the idea behind colgart's Chroma Space. This is an independent imple
 
 ![Chroma Picker panel](docs/screenshot.png)
 
+## Standalone app
+
+Chroma Picker also runs on its own, without Photoshop, as a small desktop window (Windows, macOS, Linux). It is the same panel and the same code: `desktop/` is an Electron shell that loads the files in `plugin/`.
+
+What is different from the plugin:
+
+- The foreground and background chips belong to the app and are remembered between runs. There is no Photoshop sync, lock or brush size.
+- **Pick from screen**: the monitor icon next to the eyedropper (or the `I` key) picks any color on your screen into the selected target.
+- Copy hex goes to the system clipboard, and .ase / .gpl export opens a normal save dialog.
+- View > Always on Top (`Ctrl/Cmd+T`) keeps the window above your painting app. The window remembers its size and position.
+
+Run or build it (needs Node.js 20 or newer):
+
+```
+cd desktop
+npm install
+npm start            # run from source
+npm run dist:win     # Windows installer, portable .exe and .zip in desktop/dist (run on Windows)
+npm run dist:mac     # macOS .dmg (run on a Mac)
+npm run dist:linux   # Linux AppImage
+```
+
+The builds are not code signed, so Windows SmartScreen shows a warning the first time; choose More info > Run anyway. `desktop/ui/` is copied from `plugin/` on every start and build, so edit the files under `plugin/`.
+
 ## Workspace
 
 From top to bottom, the panel is laid out as one workspace:
