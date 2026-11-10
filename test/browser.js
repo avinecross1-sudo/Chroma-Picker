@@ -68,6 +68,8 @@ const { chromium } = require('playwright'); const path = require('path');
   await pg.click('#btnMaterial'); await pg.click('#shapeSeg button[data-v="head"]'); await pg.waitForTimeout(200); await pg.screenshot({ path: out + '/w_head_menu.png' });
   await pg.keyboard.press('Escape'); await pg.waitForTimeout(1500); await pg.screenshot({ path: out + '/w_head.png' });
   console.log('head', await pg.evaluate(() => ChromaPicker.state.shape));
+  await pg.click('#btnMaterial'); await pg.click('#shapeSeg button[data-v="asaro"]'); await pg.keyboard.press('Escape'); await pg.waitForTimeout(2500); await pg.screenshot({ path: out + '/w_asaro.png' });
+  console.log('asaro', await pg.evaluate(() => ChromaPicker.state.shape));
   const t0 = Date.now(); await pg.evaluate(() => { for (let i = 0; i < 20; i++) { ChromaPicker.state.az += 3; ChromaPicker.refresh(false); } }); console.log('20 refresh calls ms', Date.now() - t0);
   console.log('errors', errs); await b.close();
 })();

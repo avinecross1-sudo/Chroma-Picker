@@ -1,0 +1,24 @@
+"""Rebuilds plugin/js/asaro.js from a source mesh.
+
+Usage: python3 test/pack-model.py <source.obj> plugin/js/asaro.js [triangles=6000]
+Needs numpy and fast-simplification (pip install numpy fast-simplification).
+The source is expected upright (y up), facing +z, standing on its base."""
+import numpy as np, base64, sys, fast_simplification
+TEMPLATE = '/* Chroma Picker - detailed planar head for the lit preview.\n *\n * A simplified copy of a sculpted planes-of-the-head bust: %(nv)d points and %(nt)d triangles, packed as 16-bit\n * numbers in base64 (positions are fractions of the bounding box). Generated from the source mesh by decimation;\n * regenerate it rather than editing it by hand. build() returns triangles in scene units, standing on the ground. */\n(function (root) {\n  "use strict";\n  var LO = [%(lo)s], HI = [%(hi)s], STAND_R = %(r)s;\n  var HEIGHT = 2.42;                                   /* scene units from the ground to the top of the head */\n  var SMOOTH = Math.cos(22 * Math.PI / 180);           /* facets that meet at less than this angle are blended */\n  var POINTS = "%(v)s";\n  var TRIS = "%(t)s";\n\n  function words(b64) {\n    var A = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/", bytes = [], acc = 0, bits = 0;\n    for (var i = 0; i < b64.length; i++) {\n      var c = A.indexOf(b64.charAt(i));\n      if (c < 0) continue;\n      acc = (acc << 6) | c; bits += 6;\n      if (bits >= 8) { bits -= 8; bytes.push((acc >> bits) & 255); }\n    }\n    var out = [];\n    for (var j = 0; j + 1 < bytes.length; j += 2) out.push(bytes[j] | (bytes[j + 1] << 8));\n    return out;\n  }\n  function sub(a, b) { return [a[0] - b[0], a[1] - b[1], a[2] - b[2]]; }\n  function cross(a, b) { return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]; }\n  function dot(a, b) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; }\n\n  function build(groundY) {\n    var pw = words(POINTS), tw = words(TRIS), s = HEIGHT / (HI[1] - LO[1]), pts = [], i, k;\n    var cx = (LO[0] + HI[0]) / 2, cz = (LO[2] + HI[2]) / 2;\n    for (i = 0; i < pw.length; i += 3) {\n      var x = LO[0] + (HI[0] - LO[0]) * pw[i] / 65535, y = LO[1] + (HI[1] - LO[1]) * pw[i + 1] / 65535, z = LO[2] + (HI[2] - LO[2]) * pw[i + 2] / 65535;\n      pts.push([(x - cx) * s, groundY + (y - LO[1]) * s, (z - cz) * s]);\n    }\n    /* facet normals weighted by area, gathered per point */\n    var faces = [], around = pts.map(function () { return []; });\n    for (i = 0; i < tw.length; i += 3) {\n      var n = cross(sub(pts[tw[i + 1]], pts[tw[i]]), sub(pts[tw[i + 2]], pts[tw[i]])), len = Math.sqrt(dot(n, n)) || 1;\n      var f = { ids: [tw[i], tw[i + 1], tw[i + 2]], area: n, unit: [n[0] / len, n[1] / len, n[2] / len] };\n      faces.push(f);\n      for (k = 0; k < 3; k++) around[f.ids[k]].push(f);\n    }\n    /* Each corner takes the blend of the neighboring facets that lie nearly in its own plane, so the broad\n     * planes stay crisp along their edges while the stand and other curved parts shade smoothly. */\n    var tris = faces.map(function (f) {\n      var vn = f.ids.map(function (id) {\n        var sum = [0, 0, 0], list = around[id];\n        for (var j = 0; j < list.length; j++) if (dot(list[j].unit, f.unit) >= SMOOTH) { sum[0] += list[j].area[0]; sum[1] += list[j].area[1]; sum[2] += list[j].area[2]; }\n        return sum;\n      });\n      return { a: pts[f.ids[0]], b: pts[f.ids[1]], c: pts[f.ids[2]], round: 0, vn: vn };\n    });\n    return { tris: tris, standRadius: STAND_R * s, top: groundY + HEIGHT, focus: [0, groundY + HEIGHT * 0.62, 0] };\n  }\n\n  var api = { build: build };\n  root.CPAsaro = api;\n  if (typeof module !== "undefined" && module.exports) module.exports = api;\n})(typeof window !== "undefined" ? window : globalThis);\n'
+vs, fs = [], []
+for line in open(sys.argv[1], errors='ignore'):
+    if line.startswith('v '): vs.append(line.split()[1:4])
+    elif line.startswith('f '):
+        ids = [int(p.split('/')[0]) - 1 for p in line.split()[1:]]
+        for k in range(1, len(ids) - 1): fs.append([ids[0], ids[k], ids[k + 1]])
+V, T = fast_simplification.simplify(np.array(vs, dtype=np.float32), np.array(fs, dtype=np.int32),
+                                    target_count=int(sys.argv[3]) if len(sys.argv) > 3 else 6000, agg=5)
+V = V.astype(np.float64); T = T.astype(np.int64)
+lo=V.min(0); hi=V.max(0)
+q=np.round((V-lo)/(hi-lo)*65535).astype('<u2')
+assert len(V)<65536
+b64=lambda a: base64.b64encode(a.tobytes()).decode()
+# stand radius: widest point in the lowest 5% of the height
+low=V[V[:,1]<lo[1]+0.05*(hi[1]-lo[1])]; cx=(lo[0]+hi[0])/2; cz=(lo[2]+hi[2])/2
+r=float(np.sqrt((low[:,0]-cx)**2+(low[:,2]-cz)**2).max())
+open(sys.argv[2],'w').write(TEMPLATE % dict(nv=len(V),nt=len(T),lo=', '.join('%.4f'%x for x in lo),hi=', '.join('%.4f'%x for x in hi),r='%.4f'%r,v=b64(q),t=b64(T.astype('<u2'))))
