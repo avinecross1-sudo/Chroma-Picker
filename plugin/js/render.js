@@ -1,7 +1,7 @@
 /* Chroma Picker - small CPU ray tracer for the lit preview.
  *
- * Scene: one sphere, a sphere flanked by two smaller ones ("trio"), or a cube,
- * resting on a ground plane. Lighting is an image-based-style environment made
+ * Scene: one sphere, a sphere flanked by two smaller ones ("trio"), a cube, or a
+ * planar head on a stand ("head"), resting on a ground plane. Lighting is an image-based-style environment made
  * from three independent colors (sky, horizon, ground) plus a key light and an
  * optional fill light. The environment both forms the backdrop and lights the
  * subject: sky fill from above, ground bounce from below, and a Fresnel sheen
@@ -10,6 +10,7 @@
 (function (root) {
   "use strict";
   var C = root.CPColor || (typeof require !== "undefined" ? require("./color.js") : null);
+  var HeadModel = root.CPHead || (typeof require !== "undefined" ? require("./head.js") : null);
 
   function add(a, b) { return [a[0] + b[0], a[1] + b[1], a[2] + b[2]]; }
   function sub(a, b) { return [a[0] - b[0], a[1] - b[1], a[2] - b[2]]; }
@@ -31,10 +32,20 @@
     return [Math.cos(el) * Math.sin(az), Math.sin(el), Math.cos(el) * Math.cos(az)];
   }
 
-  function camDist(shape) { return shape === "trio" ? 5.3 : 4.3; }
+  /* The head is narrow and tall, so in a tall panel the camera moves in until it fills the width. */
+  function camDist(shape, aspect) {
+    if (shape === "head") {
+      var a = aspect || 1;
+      /* wide panels zoom in on the other subjects; the head is already as tall as the view, so it backs off again */
+      return 4.85 * (a > 1.25 ? 1 / Math.max(0.66, Math.pow(1.25 / a, 0.75)) : Math.max(0.74, 0.55 + 0.36 * a));
+    }
+    return shape === "trio" ? 5.3 : 4.3;
+  }
+  /* the point the camera orbits: the head is taller than the other subjects, so it is framed a little higher */
+  function camTarget(shape) { return shape === "head" ? [0, 0.14, 0] : [0, -0.2, 0]; }
 
-  function makeCamera(yawDeg, pitchDeg, aspect, dist) {
-    var target = [0, -0.2, 0];
+  function makeCamera(yawDeg, pitchDeg, aspect, dist, target) {
+    target = target || [0, -0.2, 0];
     dist = dist || 4.6;
     var d = dirFromAngles(yawDeg, pitchDeg);
     var pos = add(target, mul(d, dist));
@@ -101,8 +112,103 @@
     return { t: tmin, p: add(o, mul(d, tmin)), n: fromCube(n) };
   }
 
+  /* ---------- triangle mesh (the planar head) ---------- */
+  /* Triangles live in a small bounding-volume tree. Each keeps a flat normal, and a soft occlusion value at each
+   * corner so creases such as the eye sockets and the underside of the nose and jaw read darker in ambient light. */
+  var headMesh = null;
+  function getHead() { return headMesh || (headMesh = makeMesh(HeadModel.build(GROUND_Y))); }
+
+  function makeMesh(model) {
+    var tris = model.tris.map(function (t) {
+      var e1 = sub(t.b, t.a), e2 = sub(t.c, t.a);
+      return { a: t.a, e1: e1, e2: e2, n: norm(cross(e1, e2)), round: t.round, ao: [1, 1, 1],
+        lo: [Math.min(t.a[0], t.b[0], t.c[0]), Math.min(t.a[1], t.b[1], t.c[1]), Math.min(t.a[2], t.b[2], t.c[2])],
+        hi: [Math.max(t.a[0], t.b[0], t.c[0]), Math.max(t.a[1], t.b[1], t.c[1]), Math.max(t.a[2], t.b[2], t.c[2])] };
+    });
+    function node(list) {
+      var lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity], i, k;
+      for (i = 0; i < list.length; i++) for (k = 0; k < 3; k++) { lo[k] = Math.min(lo[k], list[i].lo[k]); hi[k] = Math.max(hi[k], list[i].hi[k]); }
+      if (list.length <= 4) return { lo: lo, hi: hi, tris: list };
+      var ax = hi[0] - lo[0] > hi[1] - lo[1] ? (hi[0] - lo[0] > hi[2] - lo[2] ? 0 : 2) : (hi[1] - lo[1] > hi[2] - lo[2] ? 1 : 2);
+      list.sort(function (p, q) { return (p.lo[ax] + p.hi[ax]) - (q.lo[ax] + q.hi[ax]); });
+      var m = list.length >> 1;
+      return { lo: lo, hi: hi, left: node(list.slice(0, m)), right: node(list.slice(m)) };
+    }
+    var mesh = { root: node(tris.slice()), standRadius: model.standRadius };
+    /* corner occlusion: how much of the hemisphere over each corner is blocked by nearby surfaces */
+    var N = 40, reach = 0.75;
+    tris.forEach(function (t) {
+      if (t.round) return;
+      var t1 = norm(t.e1), t2 = cross(t.n, t1);
+      var mid = add(t.a, mul(add(t.e1, t.e2), 1 / 3));
+      [t.a, add(t.a, t.e1), add(t.a, t.e2)].forEach(function (corner, ci) {
+        var p = add(lerp3(corner, mid, 0.3), mul(t.n, 2e-3)), blocked = 0;
+        for (var i = 0; i < N; i++) {
+          var u = (i + 0.5) / N, ph = i * 2.399963, r = Math.sqrt(u), z = Math.sqrt(1 - u);
+          var d = add(add(mul(t1, r * Math.cos(ph)), mul(t2, r * Math.sin(ph))), mul(t.n, z));
+          var h = hitMesh(mesh, p, d, reach, false);
+          if (h) blocked += 1 - h.t / reach;
+        }
+        t.ao[ci] = 1 - 0.85 * blocked / N;
+      });
+    });
+    return mesh;
+  }
+
+  function hitBox(nd, o, inv, tmax) {
+    var t0 = 0, t1 = tmax;
+    for (var k = 0; k < 3; k++) {
+      var a = (nd.lo[k] - o[k]) * inv[k], b = (nd.hi[k] - o[k]) * inv[k];
+      if (a > b) { var s = a; a = b; b = s; }
+      if (a > t0) t0 = a;
+      if (b < t1) t1 = b;
+      if (t0 > t1) return false;
+    }
+    return true;
+  }
+
+  /* Nearest hit along o + d * t within tmax, as { t, tri, u, v }. With any = true it returns at the first hit found. */
+  function hitMesh(mesh, o, d, tmax, any) {
+    var inv = [1 / (d[0] || 1e-12), 1 / (d[1] || 1e-12), 1 / (d[2] || 1e-12)];
+    var stack = [mesh.root], best = null;
+    while (stack.length) {
+      var nd = stack.pop();
+      if (!hitBox(nd, o, inv, tmax)) continue;
+      if (!nd.tris) { stack.push(nd.left, nd.right); continue; }
+      for (var i = 0; i < nd.tris.length; i++) {
+        var tr = nd.tris[i], e1 = tr.e1, e2 = tr.e2;
+        var px = d[1] * e2[2] - d[2] * e2[1], py = d[2] * e2[0] - d[0] * e2[2], pz = d[0] * e2[1] - d[1] * e2[0];
+        var det = e1[0] * px + e1[1] * py + e1[2] * pz;
+        if (det > -1e-10 && det < 1e-10) continue;
+        var id = 1 / det, sx = o[0] - tr.a[0], sy = o[1] - tr.a[1], sz = o[2] - tr.a[2];
+        var u = (sx * px + sy * py + sz * pz) * id;
+        if (u < 0 || u > 1) continue;
+        var qx = sy * e1[2] - sz * e1[1], qy = sz * e1[0] - sx * e1[2], qz = sx * e1[1] - sy * e1[0];
+        var v = (d[0] * qx + d[1] * qy + d[2] * qz) * id;
+        if (v < 0 || u + v > 1) continue;
+        var t = (e2[0] * qx + e2[1] * qy + e2[2] * qz) * id;
+        if (t < 1e-4 || t >= tmax) continue;
+        tmax = t; best = { t: t, tri: tr, u: u, v: v };
+        if (any) return best;
+      }
+    }
+    return best;
+  }
+
+  function hitHead(o, d) {
+    var h = hitMesh(getHead(), o, d, Infinity, false);
+    if (!h) return null;
+    var tr = h.tri, p = add(o, mul(d, h.t));
+    return { t: h.t, p: p, n: tr.round ? norm([p[0], 0, p[2]]) : tr.n, mesh: true,
+      ao: tr.ao[0] * (1 - h.u - h.v) + tr.ao[1] * h.u + tr.ao[2] * h.v };
+  }
+
+  /* Whether the head blocks light direction L from point p; reach is how far away the light is. */
+  function headBlocks(p, L, reach) { return !!hitMesh(getHead(), p, L, reach || Infinity, true); }
+
   function hitObject(shape, o, d) {
     if (shape === "cube") return hitCube(o, d);
+    if (shape === "head") return hitHead(o, d);
     var list = spheresOf(shape), best = null;
     for (var i = 0; i < list.length; i++) { var h = hitSphereAt(o, d, list[i]); if (h && (!best || h.t < best.t)) { best = h; best.main = i === 0; } }
     return best;
@@ -112,6 +218,7 @@
   function shadowVis(S, p, L) {
     if (L[1] <= 0) return 0;
     if (S.shape === "cube") return hitCube(add(p, [0, 1e-3, 0]), L) ? 0 : 1;
+    if (S.shape === "head") return headBlocks(add(p, [0, 1e-3, 0]), L) ? 0 : 1;
     var list = spheresOf(S.shape), vis = 1, soft = S.softness;
     for (var i = 0; i < list.length; i++) {
       var c = list[i], oc = [c[0] - p[0], c[1] - p[1], c[2] - p[2]];
@@ -130,6 +237,7 @@
       var lp = toCube(sub(p, CUBE_C)), dx = Math.max(0, Math.abs(lp[0]) - CUBE_H), dz = Math.max(0, Math.abs(lp[2]) - CUBE_H);
       return 1 - 0.55 * Math.exp(-Math.sqrt(dx * dx + dz * dz) * 5);
     }
+    if (S.shape === "head") return 1 - 0.55 * Math.exp(-Math.max(0, Math.sqrt(p[0] * p[0] + p[2] * p[2]) - getHead().standRadius) * 5);
     var list = spheresOf(S.shape), ao = 1;
     for (var i = 0; i < list.length; i++) {
       var c = list[i], ex = p[0] - c[0], ez = p[2] - c[2], r = Math.sqrt(ex * ex + ez * ez) / c[3];
@@ -181,22 +289,31 @@
       var axis = norm(mul(lp, -1));
       var cone = smooth(Math.cos(32 * DEG), Math.cos(16 * DEG), dot(mul(L, -1), axis));
       var fall = Math.min(2.2, (3.6 * 3.6) / dist2);
-      return { L: L, rad: mul(Lt.color, Lt.intensity * cone * fall) };
+      return { L: L, rad: mul(Lt.color, Lt.intensity * cone * fall), reach: Math.sqrt(dist2) };
     }
-    return { L: Lt.dir, rad: mul(Lt.color, Lt.intensity) };
+    return { L: Lt.dir, rad: mul(Lt.color, Lt.intensity), reach: Infinity };
   }
 
   /* ---------- shading ---------- */
-  function shadeObject(S, p, n, V, albedo) {
+  /* hit is given for the head: its planes cast shadows on each other, and its creases hold less ambient light */
+  function shadeObject(S, p, n, V, albedo, hit) {
     var w = 0.12 + S.subsurface * 0.6, keyNdl = 0, rimC = [0, 0, 0];
     var h = p[1] - GROUND_Y;
-    var ao = 1 - 0.55 * Math.exp(-h * 3.2) * Math.max(0, -n[1]);
-    var c = add(mulv(albedo, mul(irradiance(S, n), S.ambient * ao)), groundBounce(S, n, albedo, h));
+    var mesh = !!(hit && hit.mesh), crease = mesh ? hit.ao : 1, lift = mesh ? add(p, mul(n, 2e-3)) : p;
+    var ao = (1 - 0.55 * Math.exp(-h * 3.2) * Math.max(0, -n[1])) * crease;
+    var c = add(mulv(albedo, mul(irradiance(S, n), S.ambient * ao)), mul(groundBounce(S, n, albedo, h), crease));
     for (var i = 0; i < S.lights.length; i++) {
       var Lt = S.lights[i];
       if (Lt.intensity <= 0) continue;
       var kl = lightAt(Lt, p), L = kl.L, ndl = dot(n, L);
       if (i === S.mainLight) keyNdl = ndl;
+      /* cast shadow from the rest of the head; where it falls the light is treated as if the plane faced away */
+      if (mesh && ndl > -w && headBlocks(lift, L, kl.reach)) {
+        if (i === S.mainLight) keyNdl = Math.min(ndl, -0.2);
+        if (Lt.rim) continue;
+        if (S.subsurface > 0 && !S.toon) c = add(c, mul(mulv(mulv(albedo, albedo), kl.rad), S.subsurface * 0.12));
+        continue;
+      }
       var dif = S.toon ? (ndl > 0.5 ? 1 : ndl > 0.02 ? 0.55 : 0) : Math.max(0, (ndl + w) / (1 + w));
       /* A rim light only catches the edges that turn away from the camera. It is added after the sheen
        * so the bright outline is not washed out, and partly keeps the light's own color. */
@@ -274,7 +391,7 @@
     var h = hitObject(S.shape, cam.pos, d);
     var tg = d[1] < -1e-6 ? (GROUND_Y - cam.pos[1]) / d[1] : Infinity;
     if (h && h.t < tg) {
-      var sh = shadeObject(S, h.p, h.n, mul(d, -1), S.albedo);
+      var sh = shadeObject(S, h.p, h.n, mul(d, -1), S.albedo, h);
       return { c: h.main !== false ? sh.c : fog(S, sh.c, h.t), obj: true, main: h.main !== false, n: h.n, ndl: sh.ndl };
     }
     if (tg < Infinity && tg > 0) return { c: fog(S, shadeGround(S, add(cam.pos, mul(d, tg)), tg), tg), obj: false };
@@ -303,14 +420,14 @@
   /* Main render.
    * S: albedo, sky, horizon, ground (linear rgb), lights: [{ dir, color, intensity, spot }], ambient,
    *    specular, reflectivity, subsurface, sheen, softness, toon, chrome, fog, contrast,
-   *    shape ("sphere" | "trio" | "cube"), yaw, pitch, split (null or 0..1), flatAlbedoRgb (sRGB 0..255)
+   *    shape ("sphere" | "trio" | "cube" | "head"), yaw, pitch, split (null or 0..1), flatAlbedoRgb (sRGB 0..255)
    * Returns { rgb: Uint8Array, w, h, palette } */
   /* A render that can run in time slices, so the panel stays responsive while a sharp frame is computed.
    * job.step(ms) renders rows for about ms milliseconds and returns true when finished; job.result() gives the frame. */
   function renderJob(S0, w, h, ss) {
     var S = prepare(S0);
     ss = ss || 1;
-    var cam = makeCamera(S.yaw, S.pitch, w / h, camDist(S.shape));
+    var cam = makeCamera(S.yaw, S.pitch, w / h, camDist(S.shape, w / h), camTarget(S.shape));
     S.fogStart = Math.sqrt(dot(cam.pos, cam.pos));
     var out = new Uint8Array(w * h * 3);
     var buckets = { hi: [], mid: [], shadow: [], bounce: [] }, allLum = [];
@@ -383,8 +500,8 @@
   function render(S0, w, h, ss) { var job = renderJob(S0, w, h, ss); job.step(null); return job.result(); }
 
   function lightHandle(S, aspect, i) {
-    var cam = makeCamera(S.yaw, S.pitch, aspect || 1, camDist(S.shape));
-    return project(cam, add([0, -0.2, 0], mul(S.lights[i || 0].dir, S.shape === "trio" ? 2.4 : 1.8)));
+    var cam = makeCamera(S.yaw, S.pitch, aspect || 1, camDist(S.shape, aspect), camTarget(S.shape));
+    return project(cam, add(camTarget(S.shape), mul(S.lights[i || 0].dir, S.shape === "trio" ? 2.4 : S.shape === "head" ? 2.0 : 1.8)));
   }
 
   var api = { render: render, renderJob: renderJob, dirFromAngles: dirFromAngles, lightHandle: lightHandle, makeCamera: makeCamera, project: project };

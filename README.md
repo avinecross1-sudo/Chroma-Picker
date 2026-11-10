@@ -1,6 +1,6 @@
 # Chroma Picker for Photoshop
 
-A UXP panel for Photoshop that picks colors under light. You choose a base color and see it on a lit sphere or cube, with a key light and a sky / horizon / ground environment. You can then send the lit shades (highlight, midtone, shadow, bounce) straight to Photoshop's foreground and background colors.
+A UXP panel for Photoshop that picks colors under light. You choose a base color and see it on a lit sphere, cube or planar head, with a key light and a sky / horizon / ground environment. You can then send the lit shades (highlight, midtone, shadow, bounce) straight to Photoshop's foreground and background colors.
 
 Inspired by the idea behind colgart's Chroma Space. This is an independent implementation with its own code and no shared assets.
 
@@ -35,7 +35,7 @@ The builds are not code signed, so Windows SmartScreen shows a warning the first
 From top to bottom, the panel is laid out as one workspace:
 
 1. **Tool row** (one slim row at the top). Settings open as popovers that float over the view.
-   - Left: the layout icon opens the scene and material settings (Sphere, Trio or Cube; sheen, shadow softness, specular, reflectivity, subsurface, depth fog, contrast, toon and chrome). The sliders icon floats the color controls over the bottom of the view. The half circle toggles **True Color**, a split view against the unlit local color on neutral gray (drag the divider or use the ← → keys).
+   - Left: the layout icon opens the scene and material settings (Sphere, Trio, Cube or Head, a planar Asaro-style study bust whose facets shadow each other; sheen, shadow softness, specular, reflectivity, subsurface, depth fog, contrast, toon and chrome). The sliders icon floats the color controls over the bottom of the view. The half circle toggles **True Color**, a split view against the unlit local color on neutral gray (drag the divider or use the ← → keys).
    - Right: the sunrise icon shows or hides the time bar along the bottom of the view (RISE, SUNNY, G.HOUR, SUNSET, NIGHT). The bulb opens the lights: the sun's current time, then the key and rim lights (direction, height, intensity up to 2×, spot, ambient and each light's color). The bookmark opens lighting setups, built in and your own. The globe opens pinned colors, history with undo/redo, the 3D or Classic layout, the canvas handles toggle, brush size, Photoshop sync, copy hex and .ase/.gpl export.
 2. **View**: fills whatever height the panel has. ↻ in its corner resets the camera and lights.
 3. **Targets row**: Shape (the large circle), Sky, Horizon and Ground, then the eyedropper, the lock, and Photoshop's foreground and background colors.
@@ -109,6 +109,7 @@ You can also install from a terminal with Adobe's UnifiedPluginInstallerAgent (U
 |---|---|
 | `js/color.js` | sRGB, HSB, Lab (D50), CMYK, and the picker mode definitions |
 | `js/render.js` | Ray-traced lit preview and palette estimation |
+| `js/head.js` | The planar head model: hand-authored points and facets, mirrored left to right |
 | `js/png.js` | PNG encoder (UXP has no reliable canvas pixel API, so images are data URLs) |
 | `js/bridge.js` | Photoshop foreground/background, clipboard and file saving, with a browser fallback |
 | `js/swatches.js` | `.ase` and `.gpl` writers |
