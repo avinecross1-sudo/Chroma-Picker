@@ -35,6 +35,7 @@
   var SCENE_RESET_KEYS = ["az", "el", "fillAz", "fillEl", "yaw", "pitch"];
 
   var state = Object.assign(JSON.parse(JSON.stringify(DEFAULTS)), store.get("state", {}));
+  if (["sphere", "trio", "cube", "asaro", "asaroLow"].indexOf(state.shape) < 0) state.shape = state.shape === "head" ? "asaro" : DEFAULTS.shape;
   state.colors = Object.assign({}, DEFAULTS.colors, state.colors || {});
   var ui = Object.assign({
     target: "shape", mode: "HSB", layout: "full", sampling: false, locked: false, trueColor: false, split: 0.5,
@@ -175,8 +176,9 @@
   }
 
   /* ---------- rendering ---------- */
+  var PREVIEW_PIXELS = 60000, SHARP_PIXELS = 2400000;
   var renderPending = false, renderHQ = false, hqTimer = null, jobToken = 0;
-  var sharpKey = null, jobKey = null;
+  var sharpKey = null, jobKey = null, previewKey = null;
   var raf = window.requestAnimationFrame ? window.requestAnimationFrame.bind(window) : function (f) { return setTimeout(f, 16); };
 
   /* Interactive frames are small and synchronous; the sharp frame is rendered at the panel's real pixel size,
@@ -194,8 +196,9 @@
       if (key === jobKey) return;              /* the sharp frame for this exact scene is already on its way */
       jobToken++; jobKey = null;
       clearTimeout(hqTimer);
-      if (q) startSharpRender(S, key);
-      else { renderPreview(S); hqTimer = setTimeout(function () { requestRender(true); }, 140); }
+      /* a large sharp frame takes a few seconds, so make sure the scene is on screen in rough form first */
+      if (q) { if (previewKey !== key && ui.layout !== "classic") renderPreview(S, key); startSharpRender(S, key); }
+      else { renderPreview(S, key); hqTimer = setTimeout(function () { requestRender(true); }, 140); }
     });
   }
 
@@ -220,18 +223,20 @@
     }
     renderPalette();
   }
-  function renderPreview(S) {
-    sharpKey = null;
+  function renderPreview(S, key) {
+    sharpKey = null; previewKey = key;
     if (ui.layout === "classic") { showFrame(R.render(S, 64, 64, 1), S); return; }
-    var f = frameSize(clamp(viewSize().w * 0.6, 120, 260));
+    /* a fixed budget of pixels whatever the panel's shape, so dragging stays quick in tall and wide panels alike */
+    var sz = viewSize(), f = frameSize(clamp(Math.sqrt(PREVIEW_PIXELS * sz.w / Math.max(1, sz.h)), 120, sz.w));
     showFrame(R.render(S, f.w, f.h, 1), S);
   }
   function startSharpRender(S, key) {
     if (ui.layout === "classic") { showFrame(R.render(S, 64, 64, 1), S); sharpKey = key; return; }
-    /* one rendered pixel per screen pixel; supersample only when the panel is small */
-    var f = frameSize(clamp(viewSize().w * pixelRatio(), 200, 900));
-    var ss = f.w * f.h <= 160000 ? 2 : 1;
-    var token = jobToken, job = R.renderJob(S, f.w, f.h, ss);
+    /* one rendered pixel per screen pixel, up to a ceiling for very large windows; edges are then smoothed
+     * with extra samples, so facets and shadow lines are not stair-stepped */
+    var sz = viewSize();
+    var f = frameSize(clamp(Math.min(sz.w * pixelRatio(), Math.sqrt(SHARP_PIXELS * sz.w / Math.max(1, sz.h))), 200, 4000));
+    var token = jobToken, job = R.renderJob(S, f.w, f.h, 1, 3);
     jobKey = key;
     (function tick() {
       if (token !== jobToken) return;

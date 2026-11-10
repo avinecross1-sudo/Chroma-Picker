@@ -35,7 +35,7 @@ The builds are not code signed, so Windows SmartScreen shows a warning the first
 From top to bottom, the panel is laid out as one workspace:
 
 1. **Tool row** (one slim row at the top). Settings open as popovers that float over the view.
-   - Left: the layout icon opens the scene and material settings (Sphere, Trio, Cube, Head or Asaro; the two heads are planar study busts whose facets shadow each other, Head a simple built-in one and Asaro a detailed one; sheen, shadow softness, specular, reflectivity, subsurface, depth fog, contrast, toon and chrome). The sliders icon floats the color controls over the bottom of the view. The half circle toggles **True Color**, a split view against the unlit local color on neutral gray (drag the divider or use the ← → keys).
+   - Left: the layout icon opens the scene and material settings (Sphere, Trio, Cube, Asaro or Asaro Low; the two Asaro heads are planar study busts whose facets shadow each other, Asaro Low with fewer, larger planes; sheen, shadow softness, specular, reflectivity, subsurface, depth fog, contrast, toon and chrome). The sliders icon floats the color controls over the bottom of the view. The half circle toggles **True Color**, a split view against the unlit local color on neutral gray (drag the divider or use the ← → keys).
    - Right: the sunrise icon shows or hides the time bar along the bottom of the view (RISE, SUNNY, G.HOUR, SUNSET, NIGHT). The bulb opens the lights: the sun's current time, then the key and rim lights (direction, height, intensity up to 2×, spot, ambient and each light's color). The bookmark opens lighting setups, built in and your own. The globe opens pinned colors, history with undo/redo, the 3D or Classic layout, the canvas handles toggle, brush size, Photoshop sync, copy hex and .ase/.gpl export.
 2. **View**: fills whatever height the panel has. ↻ in its corner resets the camera and lights.
 3. **Targets row**: Shape (the large circle), Sky, Horizon and Ground, then the eyedropper, the lock, and Photoshop's foreground and background colors.
@@ -109,8 +109,7 @@ You can also install from a terminal with Adobe's UnifiedPluginInstallerAgent (U
 |---|---|
 | `js/color.js` | sRGB, HSB, Lab (D50), CMYK, and the picker mode definitions |
 | `js/render.js` | Ray-traced lit preview and palette estimation |
-| `js/head.js` | The planar head model: hand-authored points and facets, mirrored left to right |
-| `js/asaro.js` | The detailed Asaro head: a 6,000-triangle reduction of a sculpted bust, packed as base64. Regenerate it with `python3 test/pack-model.py <source.obj> plugin/js/asaro.js` |
+| `js/model-asaro.js`, `js/model-asaro-low.js` | Packed meshes for the two Asaro heads. `test/pack-model.py` regenerates them from a source `.obj` (see the top of that script) |
 | `js/png.js` | PNG encoder (UXP has no reliable canvas pixel API, so images are data URLs) |
 | `js/bridge.js` | Photoshop foreground/background, clipboard and file saving, with a browser fallback |
 | `js/swatches.js` | `.ase` and `.gpl` writers |
@@ -118,4 +117,4 @@ You can also install from a terminal with Adobe's UnifiedPluginInstallerAgent (U
 
 ## Model credits
 
-The **Asaro** preview model in `js/asaro.js` is a reduced copy of `ASARO_HEAD.obj`, a ZBrush mesh supplied by the project owner. The planes-of-the-head design is John Asaro's. Check the terms of the source file before distributing builds that include it; removing the model only takes deleting `js/asaro.js` and its button and script tag in `index.html`.
+The **Asaro** and **Asaro Low** preview models are packed copies of `ASARO_HEAD.obj` (reduced from 1.27 million to 6,000 triangles) and `Asaro_low.obj`, both supplied by the project owner. The planes-of-the-head design is John Asaro's. Check the terms of the source files before distributing builds that include them; removing a model only takes deleting its `js/model-*.js` file and its button and script tag in `index.html`.

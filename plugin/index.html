@@ -22,14 +22,16 @@
       <!-- popovers float over the view -->
     <div id="popover" class="popover glass hidden">
       <div id="popMaterial" class="pop">
-        <div class="row"><span class="pop-title">MATERIAL</span><div class="spacer"></div>
-          <div class="seg" id="shapeSeg">
-            <button data-v="sphere">Sphere</button>
-            <button data-v="trio">Trio</button>
-            <button data-v="cube">Cube</button>
-            <button data-v="head" title="Planar head: a simple built-in study bust that shows how the light falls on the planes of a face">Head</button>
-            <button data-v="asaro" title="Asaro head: a detailed planes-of-the-head bust">Asaro</button>
-          </div></div>
+        <div class="row"><span class="pop-title">MODEL</span></div>
+        <!-- on its own wrapping row: Photoshop draws these buttons much wider than a browser does -->
+        <div class="seg wrap" id="shapeSeg">
+          <button data-v="sphere">Sphere</button>
+          <button data-v="trio">Trio</button>
+          <button data-v="cube">Cube</button>
+          <button data-v="asaro" title="Asaro head: a planes-of-the-head bust for studying light on a face">Asaro</button>
+          <button data-v="asaroLow" title="Asaro head, low detail: fewer, larger planes">Asaro Low</button>
+        </div>
+        <div class="row"><span class="pop-title">MATERIAL</span></div>
         <div id="materialSliders"></div>
         <div class="row">
           <button id="toonBtn" class="small toggle" title="Three-tone cel shading">Toon</button>
@@ -150,8 +152,8 @@
 
   <script src="js/color.js"></script>
   <script src="js/png.js"></script>
-  <script src="js/head.js"></script>
-  <script src="js/asaro.js"></script>
+  <script src="js/model-asaro.js"></script>
+  <script src="js/model-asaro-low.js"></script>
   <script src="js/render.js"></script>
   <script src="js/swatches.js"></script>
   <script src="js/bridge.js"></script>

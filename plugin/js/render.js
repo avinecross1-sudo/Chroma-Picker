@@ -1,7 +1,7 @@
 /* Chroma Picker - small CPU ray tracer for the lit preview.
  *
  * Scene: one sphere, a sphere flanked by two smaller ones ("trio"), a cube, or a
- * planar head on a stand ("head" is the built-in one, "asaro" a detailed one), resting on a ground plane. Lighting is an image-based-style environment made
+ * planar head on a stand ("asaro", or the coarser "asaroLow"), resting on a ground plane. Lighting is an image-based-style environment made
  * from three independent colors (sky, horizon, ground) plus a key light and an
  * optional fill light. The environment both forms the backdrop and lights the
  * subject: sky fill from above, ground bounce from below, and a Fresnel sheen
@@ -10,8 +10,8 @@
 (function (root) {
   "use strict";
   var C = root.CPColor || (typeof require !== "undefined" ? require("./color.js") : null);
-  var HeadModel = root.CPHead || (typeof require !== "undefined" ? require("./head.js") : null);
-  var AsaroModel = root.CPAsaro || (typeof require !== "undefined" ? require("./asaro.js") : null);
+  if (!root.CPModelData && typeof require !== "undefined") { require("./model-asaro.js"); require("./model-asaro-low.js"); }
+  var MODELS = root.CPModelData || {};                 /* packed meshes by shape name: "asaro", "asaroLow" */
 
   function add(a, b) { return [a[0] + b[0], a[1] + b[1], a[2] + b[2]]; }
   function sub(a, b) { return [a[0] - b[0], a[1] - b[1], a[2] - b[2]]; }
@@ -116,32 +116,88 @@
   /* ---------- triangle mesh (the planar head) ---------- */
   /* Triangles live in a small bounding-volume tree. Each keeps a flat normal, and a soft occlusion value at each
    * corner so creases such as the eye sockets and the underside of the nose and jaw read darker in ambient light. */
-  var MODELS = { head: HeadModel, asaro: AsaroModel }, meshes = {};
+  var meshes = {};
+  var MODEL_HEIGHT = 2.42;                             /* scene units from the ground to the top of a head */
+  var SMOOTH = Math.cos(22 * DEG);                     /* facets that meet at less than this angle are blended */
   function isMesh(shape) { return !!MODELS[shape]; }
-  function getMesh(shape) { return meshes[shape] || (meshes[shape] = makeMesh(MODELS[shape].build(GROUND_Y))); }
+  function getMesh(shape) { return meshes[shape] || (meshes[shape] = makeMesh(unpackModel(MODELS[shape]))); }
+
+  function base64Words(b64) {
+    var A = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/", bytes = [], acc = 0, bits = 0;
+    for (var i = 0; i < b64.length; i++) {
+      var c = A.indexOf(b64.charAt(i));
+      if (c < 0) continue;
+      acc = ((acc << 6) | c) & 0xffff; bits += 6;
+      if (bits >= 8) { bits -= 8; bytes.push((acc >> bits) & 255); }
+    }
+    var out = [];
+    for (var j = 0; j + 1 < bytes.length; j += 2) out.push(bytes[j] | (bytes[j + 1] << 8));
+    return out;
+  }
+
+  /* Turns packed model data into triangles in scene units, standing on the ground and centered on the origin. */
+  function unpackModel(data) {
+    var pw = base64Words(data.points), tw = base64Words(data.tris), lo = data.lo, hi = data.hi;
+    var s = MODEL_HEIGHT / (hi[1] - lo[1]), pts = [], i, k;
+    for (i = 0; i < pw.length; i += 3) {
+      pts.push([(pw[i] / 65535 - 0.5) * (hi[0] - lo[0]) * s, GROUND_Y + pw[i + 1] / 65535 * MODEL_HEIGHT, (pw[i + 2] / 65535 - 0.5) * (hi[2] - lo[2]) * s]);
+    }
+    /* facet normals weighted by area, gathered per point */
+    var faces = [], around = pts.map(function () { return []; });
+    for (i = 0; i < tw.length; i += 3) {
+      var n = cross(sub(pts[tw[i + 1]], pts[tw[i]]), sub(pts[tw[i + 2]], pts[tw[i]]));
+      var f = { ids: [tw[i], tw[i + 1], tw[i + 2]], area: n, unit: norm(n) };
+      faces.push(f);
+      for (k = 0; k < 3; k++) around[f.ids[k]].push(f);
+    }
+    /* Each corner takes the blend of the neighboring facets that lie nearly in its own plane, so the broad
+     * planes stay crisp along their edges while the stand and other curved parts shade smoothly. */
+    var tris = faces.map(function (f) {
+      var vn = f.ids.map(function (id) {
+        var sum = [0, 0, 0], list = around[id];
+        for (var j = 0; j < list.length; j++) if (dot(list[j].unit, f.unit) >= SMOOTH) sum = add(sum, list[j].area);
+        return sum;
+      });
+      return { a: pts[f.ids[0]], b: pts[f.ids[1]], c: pts[f.ids[2]], vn: vn };
+    });
+    return { tris: tris, standRadius: data.standRadius * s };
+  }
 
   function makeMesh(model) {
     var tris = model.tris.map(function (t) {
       var e1 = sub(t.b, t.a), e2 = sub(t.c, t.a);
-      return { a: t.a, e1: e1, e2: e2, n: norm(cross(e1, e2)), round: t.round, vn: t.vn || null, ao: [1, 1, 1],
+      return { a: t.a, e1: e1, e2: e2, n: norm(cross(e1, e2)), vn: t.vn || null, ao: [1, 1, 1],
         lo: [Math.min(t.a[0], t.b[0], t.c[0]), Math.min(t.a[1], t.b[1], t.c[1]), Math.min(t.a[2], t.b[2], t.c[2])],
         hi: [Math.max(t.a[0], t.b[0], t.c[0]), Math.max(t.a[1], t.b[1], t.c[1]), Math.max(t.a[2], t.b[2], t.c[2])] };
     });
+    /* The tree is split at the middle of the triangles' centers along their widest spread, falling back to an
+     * even split when that leaves one side empty. Each node records the split axis so rays visit the near side first. */
     function node(list) {
-      var lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity], i, k;
-      for (i = 0; i < list.length; i++) for (k = 0; k < 3; k++) { lo[k] = Math.min(lo[k], list[i].lo[k]); hi[k] = Math.max(hi[k], list[i].hi[k]); }
-      if (list.length <= 4) return { lo: lo, hi: hi, tris: list };
-      var ax = hi[0] - lo[0] > hi[1] - lo[1] ? (hi[0] - lo[0] > hi[2] - lo[2] ? 0 : 2) : (hi[1] - lo[1] > hi[2] - lo[2] ? 1 : 2);
-      list.sort(function (p, q) { return (p.lo[ax] + p.hi[ax]) - (q.lo[ax] + q.hi[ax]); });
-      var m = list.length >> 1;
-      return { lo: lo, hi: hi, left: node(list.slice(0, m)), right: node(list.slice(m)) };
+      var lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity], cl = [Infinity, Infinity, Infinity], ch = [-Infinity, -Infinity, -Infinity], i, k;
+      for (i = 0; i < list.length; i++) for (k = 0; k < 3; k++) {
+        var t = list[i], c = t.lo[k] + t.hi[k];
+        if (t.lo[k] < lo[k]) lo[k] = t.lo[k];
+        if (t.hi[k] > hi[k]) hi[k] = t.hi[k];
+        if (c < cl[k]) cl[k] = c;
+        if (c > ch[k]) ch[k] = c;
+      }
+      var nd = { x0: lo[0], y0: lo[1], z0: lo[2], x1: hi[0], y1: hi[1], z1: hi[2], tris: null, left: null, right: null, axis: 0 };
+      if (list.length <= 3) { nd.tris = list; return nd; }
+      var ax = ch[0] - cl[0] > ch[1] - cl[1] ? (ch[0] - cl[0] > ch[2] - cl[2] ? 0 : 2) : (ch[1] - cl[1] > ch[2] - cl[2] ? 1 : 2);
+      var mid = (cl[ax] + ch[ax]) / 2, a = [], b = [];
+      for (i = 0; i < list.length; i++) (list[i].lo[ax] + list[i].hi[ax] < mid ? a : b).push(list[i]);
+      if (!a.length || !b.length) {
+        list.sort(function (p, q) { return (p.lo[ax] + p.hi[ax]) - (q.lo[ax] + q.hi[ax]); });
+        a = list.slice(0, list.length >> 1); b = list.slice(list.length >> 1);
+      }
+      nd.axis = ax; nd.left = node(a); nd.right = node(b);
+      return nd;
     }
     var mesh = { root: node(tris.slice()), standRadius: model.standRadius };
     /* corner occlusion: how much of the hemisphere over each corner is blocked by nearby surfaces */
     /* a dense mesh gets one sample per triangle instead of one per corner, to keep the first frame quick */
     var dense = tris.length > 1500, N = dense ? 20 : 40, reach = 0.75;
     tris.forEach(function (t) {
-      if (t.round) return;
       var t1 = norm(t.e1), t2 = cross(t.n, t1);
       var mid = add(t.a, mul(add(t.e1, t.e2), 1 / 3));
       (dense ? [mid] : [t.a, add(t.a, t.e1), add(t.a, t.e2)]).forEach(function (corner, ci) {
@@ -159,52 +215,54 @@
     return mesh;
   }
 
-  function hitBox(nd, o, inv, tmax) {
-    var t0 = 0, t1 = tmax;
-    for (var k = 0; k < 3; k++) {
-      var a = (nd.lo[k] - o[k]) * inv[k], b = (nd.hi[k] - o[k]) * inv[k];
-      if (a > b) { var s = a; a = b; b = s; }
-      if (a > t0) t0 = a;
-      if (b < t1) t1 = b;
-      if (t0 > t1) return false;
-    }
-    return true;
-  }
-
   /* Nearest hit along o + d * t within tmax, as { t, tri, u, v }. With any = true it returns at the first hit found. */
+  var STACK = [];
   function hitMesh(mesh, o, d, tmax, any) {
-    var inv = [1 / (d[0] || 1e-12), 1 / (d[1] || 1e-12), 1 / (d[2] || 1e-12)];
-    var stack = [mesh.root], best = null;
-    while (stack.length) {
-      var nd = stack.pop();
-      if (!hitBox(nd, o, inv, tmax)) continue;
-      if (!nd.tris) { stack.push(nd.left, nd.right); continue; }
-      for (var i = 0; i < nd.tris.length; i++) {
-        var tr = nd.tris[i], e1 = tr.e1, e2 = tr.e2;
-        var px = d[1] * e2[2] - d[2] * e2[1], py = d[2] * e2[0] - d[0] * e2[2], pz = d[0] * e2[1] - d[1] * e2[0];
+    var ox = o[0], oy = o[1], oz = o[2], dx = d[0], dy = d[1], dz = d[2];
+    var ix = 1 / (dx || 1e-12), iy = 1 / (dy || 1e-12), iz = 1 / (dz || 1e-12);
+    var sp = 0, bt = 0, bu = 0, bv = 0, btri = null;
+    STACK[sp++] = mesh.root;
+    while (sp) {
+      var nd = STACK[--sp];
+      /* slab test against the node's box */
+      var a = (nd.x0 - ox) * ix, b = (nd.x1 - ox) * ix, t0 = a < b ? a : b, t1 = a < b ? b : a;
+      a = (nd.y0 - oy) * iy; b = (nd.y1 - oy) * iy;
+      if (a < b) { if (a > t0) t0 = a; if (b < t1) t1 = b; } else { if (b > t0) t0 = b; if (a < t1) t1 = a; }
+      a = (nd.z0 - oz) * iz; b = (nd.z1 - oz) * iz;
+      if (a < b) { if (a > t0) t0 = a; if (b < t1) t1 = b; } else { if (b > t0) t0 = b; if (a < t1) t1 = a; }
+      if (t0 > t1 || t1 < 0 || t0 > tmax) continue;
+      var list = nd.tris;
+      if (!list) {
+        /* push the far side first so the near side is searched first and shortens the ray */
+        var back = nd.axis === 0 ? dx < 0 : nd.axis === 1 ? dy < 0 : dz < 0;
+        if (back) { STACK[sp++] = nd.left; STACK[sp++] = nd.right; } else { STACK[sp++] = nd.right; STACK[sp++] = nd.left; }
+        continue;
+      }
+      for (var i = 0; i < list.length; i++) {
+        var tr = list[i], e1 = tr.e1, e2 = tr.e2, ta = tr.a;
+        var px = dy * e2[2] - dz * e2[1], py = dz * e2[0] - dx * e2[2], pz = dx * e2[1] - dy * e2[0];
         var det = e1[0] * px + e1[1] * py + e1[2] * pz;
         if (det > -1e-10 && det < 1e-10) continue;
-        var id = 1 / det, sx = o[0] - tr.a[0], sy = o[1] - tr.a[1], sz = o[2] - tr.a[2];
+        var id = 1 / det, sx = ox - ta[0], sy = oy - ta[1], sz = oz - ta[2];
         var u = (sx * px + sy * py + sz * pz) * id;
         if (u < 0 || u > 1) continue;
         var qx = sy * e1[2] - sz * e1[1], qy = sz * e1[0] - sx * e1[2], qz = sx * e1[1] - sy * e1[0];
-        var v = (d[0] * qx + d[1] * qy + d[2] * qz) * id;
+        var v = (dx * qx + dy * qy + dz * qz) * id;
         if (v < 0 || u + v > 1) continue;
         var t = (e2[0] * qx + e2[1] * qy + e2[2] * qz) * id;
         if (t < 1e-4 || t >= tmax) continue;
-        tmax = t; best = { t: t, tri: tr, u: u, v: v };
-        if (any) return best;
+        tmax = t; bt = t; bu = u; bv = v; btri = tr;
+        if (any) return { t: bt, tri: btri, u: bu, v: bv };
       }
     }
-    return best;
+    return btri ? { t: bt, tri: btri, u: bu, v: bv } : null;
   }
 
   function hitModel(shape, o, d) {
     var h = hitMesh(getMesh(shape), o, d, Infinity, false);
     if (!h) return null;
     var tr = h.tri, p = add(o, mul(d, h.t)), w = 1 - h.u - h.v, n = tr.n;
-    if (tr.round) n = norm([p[0], 0, p[2]]);
-    else if (tr.vn) n = norm(add(add(mul(tr.vn[0], w), mul(tr.vn[1], h.u)), mul(tr.vn[2], h.v)));
+    if (tr.vn) n = norm(add(add(mul(tr.vn[0], w), mul(tr.vn[1], h.u)), mul(tr.vn[2], h.v)));
     /* gn is the true facet normal: shadow rays start just off the facet itself */
     return { t: h.t, p: p, n: n, gn: tr.n, mesh: true, ao: tr.ao[0] * w + tr.ao[1] * h.u + tr.ao[2] * h.v };
   }
@@ -426,24 +484,28 @@
   /* Main render.
    * S: albedo, sky, horizon, ground (linear rgb), lights: [{ dir, color, intensity, spot }], ambient,
    *    specular, reflectivity, subsurface, sheen, softness, toon, chrome, fog, contrast,
-   *    shape ("sphere" | "trio" | "cube" | "head" | "asaro"), yaw, pitch, split (null or 0..1), flatAlbedoRgb (sRGB 0..255)
+   *    shape ("sphere" | "trio" | "cube" | "asaro" | "asaroLow"), yaw, pitch, split (null or 0..1), flatAlbedoRgb (sRGB 0..255)
    * Returns { rgb: Uint8Array, w, h, palette } */
   /* A render that can run in time slices, so the panel stays responsive while a sharp frame is computed.
    * job.step(ms) renders rows for about ms milliseconds and returns true when finished; job.result() gives the frame. */
-  function renderJob(S0, w, h, ss) {
+  /* edge > 1 adds a second pass that finds the pixels on an edge (a silhouette, a crease between two planes, a
+   * shadow line) and renders just those again with edge x edge samples, which smooths the stair-steps at a
+   * fraction of the cost of supersampling the whole frame. */
+  function renderJob(S0, w, h, ss, edge) {
     var S = prepare(S0);
     ss = ss || 1;
+    edge = edge > ss ? edge : 0;
     var cam = makeCamera(S.yaw, S.pitch, w / h, camDist(S.shape, w / h), camTarget(S.shape));
     S.fogStart = Math.sqrt(dot(cam.pos, cam.pos));
     var out = new Uint8Array(w * h * 3);
     var buckets = { hi: [], mid: [], shadow: [], bounce: [] }, allLum = [];
     var splitX = S.split == null ? Infinity : Math.round(S.split * w);
     var flat = S.flatAlbedoRgb || [128, 128, 128];
-    var inv = 1 / (ss * ss);
-    var y = 0, done = null;
-    function row(y) {
-      for (var x = 0; x < w; x++) {
-        var acc = [0, 0, 0], cov = 0, center = null;
+    var y = 0, y2 = 0, marks = null, done = null;
+    /* the palette is estimated from a spread of pixels, at most a few tens of thousands however large the frame */
+    var stride = Math.max(1, Math.round(Math.sqrt(w * h / 50000)));
+    function pixel(x, y, ss, collect) {
+        var acc = [0, 0, 0], cov = 0, center = null, inv = 1 / (ss * ss);
         for (var sy = 0; sy < ss; sy++) for (var sx = 0; sx < ss; sx++) {
           var r = trace(S, cam, camRay(cam, (x + (sx + 0.5) / ss) / w, (y + (sy + 0.5) / ss) / h));
           acc[0] += r.c[0]; acc[1] += r.c[1]; acc[2] += r.c[2];
@@ -456,15 +518,26 @@
           o = x === splitX ? [235, 235, 235] : [128 + (flat[0] - 128) * cov, 128 + (flat[1] - 128) * cov, 128 + (flat[2] - 128) * cov];
         } else o = encodeOut(S, mul(acc, inv));
         out[idx] = o[0]; out[idx + 1] = o[1]; out[idx + 2] = o[2];
-        if (center && center.obj && center.main && cov > 0.99) {
+        if (collect && x % stride === 0 && y % stride === 0 && center && center.obj && center.main && cov > 0.99) {
           var col = center.c, n = center.n, ndl = center.ndl;
           allLum.push([0.2126 * col[0] + 0.7152 * col[1] + 0.0722 * col[2], col]);
           if (ndl > 0.3 && ndl < 0.7) buckets.mid.push(col);
           if (ndl < -0.15 && n[1] > -0.25) buckets.shadow.push(col);
           if (ndl < 0.05 && n[1] < -0.45) buckets.bounce.push(col);
         }
+    }
+    function row(y) { for (var x = 0; x < w; x++) pixel(x, y, ss, true); }
+    /* a pixel is on an edge when it differs visibly from the one to its right or the one below */
+    function markEdges() {
+      marks = new Uint8Array(w * h);
+      for (var yy = 0; yy < h; yy++) for (var x = 0; x < w; x++) {
+        var i = yy * w + x, a = i * 3;
+        if (x + 1 < w && Math.abs(out[a] - out[a + 3]) + Math.abs(out[a + 1] - out[a + 4]) + Math.abs(out[a + 2] - out[a + 5]) > 20) marks[i] = marks[i + 1] = 1;
+        var b = a + w * 3;
+        if (yy + 1 < h && Math.abs(out[a] - out[b]) + Math.abs(out[a + 1] - out[b + 1]) + Math.abs(out[a + 2] - out[b + 2]) > 20) marks[i] = marks[i + w] = 1;
       }
     }
+    function edgeRow(yy) { for (var x = 0; x < w; x++) if (marks[yy * w + x]) pixel(x, yy, edge, false); }
     function finish() {
     if (allLum.length) {
       allLum.sort(function (a, b) { return b[0] - a[0]; });
@@ -494,16 +567,20 @@
       step: function (ms) {
         if (done) return true;
         var t0 = now();
-        while (y < h) { row(y); y++; if (ms != null && now() - t0 >= ms) break; }
-        if (y >= h) done = finish();
-        return !!done;
+        while (y < h) { row(y); y++; if (ms != null && now() - t0 >= ms) return false; }
+        if (edge) {
+          if (!marks) markEdges();
+          while (y2 < h) { edgeRow(y2); y2++; if (ms != null && now() - t0 >= ms) return false; }
+        }
+        done = finish();
+        return true;
       },
       result: function () { return done; },
-      progress: function () { return y / h; }
+      progress: function () { return edge ? (y + y2) / (2 * h) : y / h; }
     };
   }
 
-  function render(S0, w, h, ss) { var job = renderJob(S0, w, h, ss); job.step(null); return job.result(); }
+  function render(S0, w, h, ss, edge) { var job = renderJob(S0, w, h, ss, edge); job.step(null); return job.result(); }
 
   function lightHandle(S, aspect, i) {
     var cam = makeCamera(S.yaw, S.pitch, aspect || 1, camDist(S.shape, aspect), camTarget(S.shape));
