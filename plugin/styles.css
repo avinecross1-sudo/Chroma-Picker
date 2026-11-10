@@ -24,6 +24,9 @@ button:disabled { opacity: 0.4; }
 .seg button { margin: 0; border-radius: 0; border-right-width: 0; padding: 2px 6px; font-size: 10px; }
 .seg button:first-child { border-radius: 3px 0 0 3px; }
 .seg button:last-child { border-radius: 0 3px 3px 0; border-right-width: 1px; }
+/* A wrapping group of choices: each button stands alone so the group can break onto more lines. */
+.seg.wrap { flex-wrap: wrap; margin: 0 0 4px 0; }
+.seg.wrap button, .seg.wrap button:first-child, .seg.wrap button:last-child { border-radius: 3px; border-right-width: 1px; margin: 0 4px 4px 0; }
 
 .ibtn { display: flex; flex-direction: row; align-items: center; justify-content: center; cursor: pointer; border-radius: 3px; }
 .ibtn img { display: block; width: 16px; height: 16px; }

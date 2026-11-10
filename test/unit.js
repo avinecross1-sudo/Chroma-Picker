@@ -27,7 +27,10 @@ ok(SW.toGPL('X',[{name:'A',hex:'#0A0B0C'}]).includes(' 10  11  12\tA'),'gpl');
 const lin=h=>C.rgbToLinear(C.hexToRgb(h));
 const S={albedo:lin('#808080'),sky:lin('#8899BB'),horizon:lin('#CCCCCC'),ground:lin('#665544'),groundEnv:lin('#665544'),lights:[{dir:R.dirFromAngles(30,40),color:[1,1,1],intensity:1,spot:false}],ambient:0.5,specular:0.3,reflectivity:0,subsurface:0,toon:false,chrome:false,fog:0,contrast:1,shape:'sphere',yaw:25,pitch:14,split:null};
 const lum=c=>C.luminance(c);
-for(const shape of ['sphere','cube']){ S.shape=shape; const r=R.render(S,120,100,1);
+for(const shape of ['sphere','cube','asaro','asaroLow']){ S.shape=shape; const r=R.render(S,120,100,1);
   ok(r.rgb.length===120*100*3,'size'); const pl=r.palette; ok(lum(pl.hi)>lum(pl.mid)&&lum(pl.mid)>lum(pl.shadow),shape+' palette order '+JSON.stringify(pl)); }
 const t0=Date.now(); R.render(S,220,173,2); console.log('HQ render ms', Date.now()-t0);
+// edge smoothing only touches edge pixels: flat areas match the plain render, and the silhouette gains in-between tones
+S.shape='asaro'; { const a=R.render(S,90,110,1), b=R.render(S,90,110,1,3); let same=0,diff=0; for(let i=0;i<a.rgb.length;i+=3){ if(a.rgb[i]===b.rgb[i]&&a.rgb[i+1]===b.rgb[i+1]&&a.rgb[i+2]===b.rgb[i+2]) same++; else diff++; }
+  ok(diff>50&&same>diff,'edge pass changed '+diff+' of '+(same+diff)+' pixels'); ok(a.rgb[0]===b.rgb[0],'corner untouched'); }
 console.log('passed',n,'assertions');
