@@ -89,7 +89,10 @@
   }
 
   var statusTimer = null;
-  function idleStatus() { return B.isPhotoshop ? (ui.sync ? "Synced with Photoshop" : "Sync off") : "Browser preview (no Photoshop)"; }
+  function idleStatus() {
+    if (B.isPhotoshop) return ui.sync ? "Synced with Photoshop" : "Sync off";
+    return B.isDesktop ? "Chroma Picker" : "Browser preview (no Photoshop)";
+  }
   function status(msg) {
     $("status").textContent = msg;
     clearTimeout(statusTimer);
@@ -861,6 +864,7 @@
 
     // targets, sample, lock, PS chips
     each(document.querySelectorAll(".target"), function (t) { t.addEventListener("click", function () { selectTarget(t.getAttribute("data-t")); }); });
+    $("btnScreen").addEventListener("click", pickFromScreen);
     $("btnSample").addEventListener("click", function () { ui.sampling = !ui.sampling; refreshAll(false); if (ui.sampling) status("Click the render to sample"); });
     $("btnLock").addEventListener("click", function () {
       ui.locked = !ui.locked; persist(); refreshAll(false);
@@ -917,6 +921,7 @@
       if (e.key === "Escape") { showPop(null); if (ui.sampling) { ui.sampling = false; refreshAll(false); } }
       else if (e.key === "x" || e.key === "X") swapColors();
       else if (e.key === "d" || e.key === "D") resetColors();
+      else if ((e.key === "i" || e.key === "I") && B.canPickScreen) pickFromScreen();
       else if (ui.trueColor && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
         ui.split = clamp(ui.split + (e.key === "ArrowLeft" ? -1 : 1) * (e.shiftKey ? 0.1 : 0.02), 0.02, 0.98);
         requestRender(true);
@@ -952,8 +957,34 @@
   /* The app is a flex column as tall as the panel; the view takes whatever height is left. */
   function fitApp() { $("app").style.height = Math.max(200, window.innerHeight || 600) + "px"; }
 
+  /* ---------- host-specific UI ----------
+   * Outside Photoshop there is nothing to sync with, no brush and no host foreground to follow,
+   * so those controls are hidden and the chips become the app's own foreground / background. */
+  function setupHostUI() {
+    document.body.classList.add("host-" + (B.host || (B.isPhotoshop ? "photoshop" : "browser")));
+    if (B.canPickScreen) cls($("btnScreen"), "hidden", false);
+    if (B.isPhotoshop) return;
+    if (B.isDesktop) {
+      ui.sync = true; ui.locked = false;
+      each(["syncBtn", "brushRow", "btnLock"], function (id) { cls($(id), "hidden", true); });
+      $("chips").title = "Foreground and background: click to set from the current color, Alt-click background to swap";
+      $("btnSample").title = "Sample: click the render to send a lit shade to the foreground";
+      $("btnMenu").title = "Swatches, history and export";
+    }
+  }
+
+  function pickFromScreen() {
+    B.pickScreen().then(function (hex) {
+      if (!hex) { status("Pick cancelled"); return; }
+      beginEdit(); setTargetHex(ui.target, hex, false); endEdit();
+      if (ui.target === "shape") addHistory(hex);
+      status("Picked " + hex);
+    });
+  }
+
   /* ---------- start ---------- */
   function init() {
+    setupHostUI();
     buildChannelSliders(); buildSliders(); buildPresetList();
     bind(); renderSwatches();
     $("status").textContent = idleStatus();

@@ -138,3 +138,6 @@ select.mode { width: 70px; }
 .sun-mark img { width: 18px; height: 18px; }
 .sun-info { color: var(--text); font-size: 10px; }
 .sun-hint { margin: 0 0 8px 0; }
+
+/* Keep .hidden winning over the display rules of buttons above. */
+.ibtn.hidden, button.hidden { display: none; }

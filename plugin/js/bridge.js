@@ -1,5 +1,7 @@
 /* Chroma Picker - host bridge.
  * In Photoshop (UXP) this talks to the photoshop / uxp modules.
+ * In the standalone desktop app (Electron, desktop/) the preload script exposes window.CPDesktop,
+ * and the foreground / background chips belong to the app itself and are saved between runs.
  * In a plain browser (for development) it falls back to an in-memory mock. */
 (function (root) {
   "use strict";
@@ -8,7 +10,16 @@
   try { uxp = require("uxp"); } catch (e) { uxp = null; }
 
   var isPS = !!(ps && ps.app);
+  var desk = (!isPS && root.CPDesktop) ? root.CPDesktop : null;
   var mock = { fg: "#5CC46A", bg: "#2E4D7D" };
+  var CHIP_KEY = "chromaPicker.desktopChips";
+  if (desk) {
+    try { var saved = JSON.parse(localStorage.getItem(CHIP_KEY) || "null"); if (saved && saved.fg && saved.bg) { mock.fg = saved.fg; mock.bg = saved.bg; } } catch (e) { /* defaults */ }
+  }
+  function saveChips() {
+    if (!desk) return;
+    try { localStorage.setItem(CHIP_KEY, JSON.stringify({ fg: mock.fg, bg: mock.bg })); } catch (e) { /* ignore */ }
+  }
 
   function hexFromSolid(sc) {
     try { return ("#" + sc.rgb.hexValue).toUpperCase(); } catch (e) { return null; }
@@ -21,12 +32,22 @@
     return c;
   }
 
+  /* EyeDropper returns "#rrggbb" or, in some builds, "rgb(r, g, b)". */
+  function normHex(v) {
+    var m = /^rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(v);
+    if (m) return root.CPColor.rgbToHex([+m[1], +m[2], +m[3]]);
+    return v.toUpperCase();
+  }
+
   function modal(name, fn) {
     return ps.core.executeAsModal(fn, { commandName: name });
   }
 
   var bridge = {
     isPhotoshop: isPS,
+    isDesktop: !!desk,
+    /* "photoshop", "desktop" or "browser" */
+    host: isPS ? "photoshop" : desk ? "desktop" : "browser",
 
     /* returns { fg, bg } hex strings */
     getColors: function () {
@@ -39,12 +60,12 @@
     },
 
     setForeground: function (hex) {
-      if (!isPS) { mock.fg = hex; return Promise.resolve(); }
+      if (!isPS) { mock.fg = hex; saveChips(); return Promise.resolve(); }
       return modal("Set Foreground Color", function () { ps.app.foregroundColor = solidFromHex(hex); }).catch(function (e) { console.warn("setForeground", e); });
     },
 
     setBackground: function (hex) {
-      if (!isPS) { mock.bg = hex; return Promise.resolve(); }
+      if (!isPS) { mock.bg = hex; saveChips(); return Promise.resolve(); }
       return modal("Set Background Color", function () { ps.app.backgroundColor = solidFromHex(hex); }).catch(function (e) { console.warn("setBackground", e); });
     },
 
@@ -69,6 +90,7 @@
     },
 
     copyText: function (text) {
+      if (desk && desk.copyText) return Promise.resolve(desk.copyText(text));
       try {
         if (navigator.clipboard && navigator.clipboard.setContent) return navigator.clipboard.setContent({ "text/plain": text });
         if (navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(text);
@@ -78,6 +100,7 @@
 
     /* Save a file the user picks. data: string or ArrayBuffer */
     saveFile: function (suggestedName, ext, data, binary) {
+      if (desk && desk.saveFile) return desk.saveFile(suggestedName, ext, data, !!binary);
       if (uxp && uxp.storage) {
         var lfs = uxp.storage.localFileSystem, formats = uxp.storage.formats;
         return lfs.getFileForSaving(suggestedName, { types: [ext] }).then(function (file) {
@@ -90,6 +113,14 @@
       a.href = URL.createObjectURL(blob); a.download = suggestedName;
       document.body.appendChild(a); a.click(); a.remove();
       return Promise.resolve(true);
+    },
+
+    /* Pick any color on screen (desktop app and Chromium browsers; not available in UXP).
+     * Resolves to a hex string, or null when cancelled. */
+    canPickScreen: !isPS && typeof root.EyeDropper === "function",
+    pickScreen: function () {
+      if (isPS || typeof root.EyeDropper !== "function") return Promise.resolve(null);
+      return new root.EyeDropper().open().then(function (r) { return r && r.sRGBHex ? normHex(r.sRGBHex) : null; }, function () { return null; });
     },
 
     _mock: mock

@@ -1,0 +1,33 @@
+{
+  "name": "chroma-picker-desktop",
+  "productName": "Chroma Picker",
+  "version": "1.4.0",
+  "description": "Chroma Picker as a standalone desktop app: pick colors under light without Photoshop.",
+  "main": "main.js",
+  "private": true,
+  "license": "UNLICENSED",
+  "scripts": {
+    "copy-ui": "node scripts/copy-ui.js",
+    "start": "npm run copy-ui && electron .",
+    "icon": "node scripts/make-icon.js",
+    "dist:win": "npm run copy-ui && electron-builder --win --x64",
+    "dist:mac": "npm run copy-ui && electron-builder --mac",
+    "dist:linux": "npm run copy-ui && electron-builder --linux"
+  },
+  "devDependencies": {
+    "electron": "45.0.0",
+    "electron-builder": "26.17.0"
+  },
+  "build": {
+    "appId": "com.chromapicker.desktop",
+    "productName": "Chroma Picker",
+    "artifactName": "ChromaPicker-${version}-${os}-${arch}.${ext}",
+    "directories": { "output": "dist", "buildResources": "build" },
+    "files": ["main.js", "preload.js", "ui/**/*", "package.json"],
+    "win": { "target": ["nsis", "portable", "zip"], "icon": "build/icon.png" },
+    "nsis": { "oneClick": false, "allowToChangeInstallationDirectory": true, "artifactName": "ChromaPicker-Setup-${version}.${ext}" },
+    "portable": { "artifactName": "ChromaPicker-${version}-portable.${ext}" },
+    "mac": { "target": ["dmg"], "category": "public.app-category.graphics-design", "icon": "build/icon.png" },
+    "linux": { "target": ["AppImage"], "category": "Graphics", "icon": "build/icon.png" }
+  }
+}
