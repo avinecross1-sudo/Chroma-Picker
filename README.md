@@ -51,12 +51,12 @@ From top to bottom, the panel is laid out as one workspace:
    - **Sun**: part of the skybox. Its direction, color and strength, and the sky and horizon colors, follow the time of day, and only the time bar changes them. It shows as a small sun mark on the view. Editing Sky or Horizon by hand keeps a custom sky until you drag the time bar again.
    - **Key light**: your main light, with color and intensity from 0 to 2×.
    - **Rim light**: a back light that only catches the edges turned away from the camera, with color and intensity from 0 to 2×.
-   - Drag the key and rim handles around the subject.
+   - Drag the key and rim handles around the subject. They reach the whole sphere, including behind and below it: the middle of the view puts a light at the camera, the left and right edges put it behind the subject, and the top and bottom edges put it above and below. The sun keeps following the time of day.
    - Click a handle to edit that light's color.
-   - The left rail sets the height of the selected light.
+   - The left rail sets the height of the selected light, from straight below (-90°) to straight above (90°).
 3. **Camera**
-   - Drag anywhere in the view to orbit.
-   - The right rail tilts the camera.
+   - Drag anywhere in the view to orbit a full 360° in any direction, over the top and underneath. Seen from below, the ground turns see-through so the subject stays in view.
+   - The right rail tilts the camera all the way around (-180° to 180°).
 4. **Quick-select targets**: Shape (the large circle), Sky, Horizon and Ground. The color section edits whichever target is selected.
 5. **Color section**
    - The header shows the target name, a hex field and the mode menu (HSB, RGB, Lab, CMYK, Hue Cube).

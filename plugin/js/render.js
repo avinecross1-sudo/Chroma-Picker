@@ -51,8 +51,11 @@
     var d = dirFromAngles(yawDeg, pitchDeg);
     var pos = add(target, mul(d, dist));
     var fwd = norm(sub(target, pos));
-    var right = norm(cross(fwd, [0, 1, 0]));
-    var up = cross(right, fwd);
+    /* The camera orbits freely, over the top and underneath. Its up is the direction the orbit moves in as the
+     * pitch grows, so it stays defined straight above or below the subject and turns over smoothly past the pole. */
+    var az = yawDeg * DEG, el = pitchDeg * DEG;
+    var up = [-Math.sin(el) * Math.sin(az), Math.cos(el), -Math.sin(el) * Math.cos(az)];
+    var right = norm(cross(fwd, up));
     /* The subject grows with the panel's height, and also with its width: in tall panels the horizontal
      * field of view is kept, and in wide panels the camera zooms in (up to a limit, so the subject still fits). */
     var a = aspect || 1;
@@ -459,7 +462,8 @@
 
   function trace(S, cam, d) {
     var h = hitObject(S.shape, cam.pos, d);
-    var tg = d[1] < -1e-6 ? (GROUND_Y - cam.pos[1]) / d[1] : Infinity;
+    /* the ground is seen from above only: from underneath it is see-through, so a low camera still shows the subject */
+    var tg = d[1] < -1e-6 && cam.pos[1] > GROUND_Y ? (GROUND_Y - cam.pos[1]) / d[1] : Infinity;
     if (h && h.t < tg) {
       var sh = shadeObject(S, h.p, h.n, mul(d, -1), S.albedo, h);
       return { c: h.main !== false ? sh.c : fog(S, sh.c, h.t), obj: true, main: h.main !== false, n: h.n, ndl: sh.ndl };

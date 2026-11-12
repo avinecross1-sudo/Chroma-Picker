@@ -6,6 +6,8 @@
 
   function $(id) { return document.getElementById(id); }
   function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
+  /* an angle in degrees, brought into -180..180 */
+  function wrap180(a) { return ((a + 180) % 360 + 360) % 360 - 180; }
   function lerp(a, b, t) { return a + (b - a) * t; }
   function each(list, fn) { for (var i = 0; i < list.length; i++) fn(list[i], i); }
   function cls(el, name, on) { if (on) el.classList.add(name); else el.classList.remove(name); }
@@ -264,8 +266,8 @@
     if (su && L.sunEl > 0) { sm.style.display = "block"; sm.style.left = (clamp(su[0], 0.04, 0.96) * 100) + "%"; sm.style.top = (clamp(su[1], 0.06, 0.94) * 100) + "%"; }
     else sm.style.display = "none";
     var el = ui.selLight === 0 ? L.el : state.fillEl;
-    $("railLightKnob").style.top = ((1 - (el + 5) / 94) * 100) + "%";
-    $("railCamKnob").style.top = ((1 - (state.pitch - 2) / 68) * 100) + "%";
+    $("railLightKnob").style.top = ((1 - (el + 90) / 180) * 100) + "%";
+    $("railCamKnob").style.top = ((1 - (wrap180(state.pitch) + 180) / 360) * 100) + "%";
     $("overlay").style.display = ui.overlays ? "block" : "none";
     $("btnResetScene").style.display = ui.overlays ? "flex" : "none";
     var sh = $("splitHandle"), lbl = $("splitLabel");
@@ -431,7 +433,8 @@
       e.preventDefault();
       var rect = (handlers.relativeTo || el).getBoundingClientRect();
       function pos(ev) {
-        return [clamp((ev.clientX - rect.left) / (rect.width || 1), 0, 1), clamp((ev.clientY - rect.top) / (rect.height || 1), 0, 1)];
+        var u = (ev.clientX - rect.left) / (rect.width || 1), v = (ev.clientY - rect.top) / (rect.height || 1);
+        return handlers.free ? [u, v] : [clamp(u, 0, 1), clamp(v, 0, 1)];
       }
       var start = pos(e), moved = false, sx = e.clientX, sy = e.clientY;
       if (handlers.start && handlers.start(start, e) === false) return;
@@ -714,10 +717,10 @@
     allSliders = [];
     $("todImg").src = gradientUrl(function (t) { return C.hexToRgb(timeOfDay(todHour(t)).horizon); }, 64);
     addSlider("keySliders", "Direction", "az", -180, 180, 0, { unit: "°" });
-    addSlider("keySliders", "Height", "el", -5, 89, 0, { unit: "°" });
+    addSlider("keySliders", "Height", "el", -90, 90, 0, { unit: "°" });
     addSlider("keySliders", "Intensity", "intensity", 0, 2, 2, { unit: "×" });
     addSlider("fillSliders", "Direction", "fillAz", -180, 180, 0, { unit: "°" });
-    addSlider("fillSliders", "Height", "fillEl", -5, 89, 0, { unit: "°" });
+    addSlider("fillSliders", "Height", "fillEl", -90, 90, 0, { unit: "°" });
     addSlider("fillSliders", "Intensity", "fillInt", 0, 2, 2, { unit: "×" });
     addSlider("ambientSliders", "Ambient", "ambient", 0, 1.5, 2);
     [["Sheen", "sheen", 0, 1.5], ["Shadow soft", "softness", 0, 3], ["Specular", "specular", 0, 1], ["Reflectivity", "reflectivity", 0, 1], ["Subsurface", "subsurface", 0, 1],
@@ -739,6 +742,16 @@
     }));
   }
 
+  /* A point in the view, as a direction for a light around the whole sphere, relative to the camera: the center puts
+   * the light at the camera, the left and right edges put it straight behind the subject, the top and bottom edges
+   * put it straight above and below the view. It follows the camera wherever it has orbited. */
+  function lightFromView(p) {
+    var cam = R.makeCamera(state.yaw, state.pitch, 1, 1, [0, 0, 0]);
+    var a = (p[0] - 0.5) * 2 * Math.PI, b = (0.5 - p[1]) * Math.PI;
+    var ca = Math.cos(a) * Math.cos(b), sa = Math.sin(a) * Math.cos(b), sb = Math.sin(b), d = [0, 0, 0];
+    for (var k = 0; k < 3; k++) d[k] = -cam.fwd[k] * ca + cam.right[k] * sa + cam.up[k] * sb;
+    return { az: Math.round(Math.atan2(d[0], d[2]) * 180 / Math.PI), el: Math.round(Math.asin(clamp(d[1], -1, 1)) * 180 / Math.PI) };
+  }
   function lightAngles(i) { return i === 0 ? { az: state.az, el: state.el } : { az: state.fillAz, el: state.fillEl }; }
   function setLightAngles(i, az, el) {
     if (i === 0) { state.az = az; state.el = el; } else { state.fillAz = az; state.fillEl = el; }
@@ -817,9 +830,8 @@
         stop: true, relativeTo: $("viewport"),
         start: function () { beginEdit(); ui.selLight = i; },
         move: function (p) {
-          var az = ((state.yaw + (p[0] - 0.5) * 300 + 540) % 360) - 180;
-          var el = clamp((0.5 - p[1]) * 170 + 10, -5, 89);
-          setLightAngles(i, az, el); requestRender(false);
+          var a = lightFromView(p);
+          setLightAngles(i, a.az, a.el); requestRender(false);
           allSliders.forEach(function (s) { s.update(); });
         },
         end: function (p, s, moved) {
@@ -832,29 +844,32 @@
     dragOn($("railLight"), {
       stop: true, immediate: true,
       start: function () { beginEdit(); },
-      move: function (p) { var a = lightAngles(ui.selLight); setLightAngles(ui.selLight, a.az, clamp(-5 + (1 - p[1]) * 94, -5, 89)); requestRender(false); allSliders.forEach(function (s) { s.update(); }); },
+      move: function (p) { var a = lightAngles(ui.selLight); setLightAngles(ui.selLight, a.az, Math.round(-90 + (1 - p[1]) * 180)); requestRender(false); allSliders.forEach(function (s) { s.update(); }); },
       end: function () { endEdit(); }
     });
     dragOn($("railCam"), {
       stop: true, immediate: true,
       start: function () { beginEdit(); },
-      move: function (p) { state.pitch = 2 + (1 - p[1]) * 68; requestRender(false); },
+      move: function (p) { state.pitch = -180 + (1 - p[1]) * 360; requestRender(false); },
       end: function () { endEdit(); }
     });
     // viewport: orbit, sample, or move the True Color split
     var drag = null;
     dragOn($("viewport"), {
+      free: true,
       start: function (p) {
         if (ui.trueColor && Math.abs(p[0] - ui.split) < 0.05) { drag = { kind: "split" }; return; }
         if (ui.sampling) { drag = { kind: "sample" }; return; }
-        beginEdit(); drag = { kind: "orbit", yaw: state.yaw, pitch: state.pitch };
+        /* upside down (past the top or bottom), a sideways drag turns the other way so the subject still follows the pointer */
+        beginEdit(); drag = { kind: "orbit", yaw: state.yaw, pitch: state.pitch, flip: Math.cos(state.pitch * Math.PI / 180) < 0 ? -1 : 1 };
       },
       move: function (p, s) {
         if (!drag) return;
         if (drag.kind === "split") { ui.split = clamp(p[0], 0.02, 0.98); requestRender(false); return; }
         if (drag.kind === "orbit") {
-          state.yaw = drag.yaw - (p[0] - s[0]) * 270;
-          state.pitch = clamp(drag.pitch + (p[1] - s[1]) * 110, 2, 70);
+          /* free 360° orbit in both directions: no limit on the tilt, so the camera can go over the top and underneath */
+          state.yaw = wrap180(drag.yaw - (p[0] - s[0]) * 270 * drag.flip);
+          state.pitch = wrap180(drag.pitch + (p[1] - s[1]) * 200);
           requestRender(false);
         }
       },
