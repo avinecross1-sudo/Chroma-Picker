@@ -169,7 +169,7 @@
   function makeMesh(model) {
     var tris = model.tris.map(function (t) {
       var e1 = sub(t.b, t.a), e2 = sub(t.c, t.a);
-      return { a: t.a, e1: e1, e2: e2, n: norm(cross(e1, e2)), vn: t.vn || null, ao: [1, 1, 1],
+      return { a: t.a, e1: e1, e2: e2, n: norm(cross(e1, e2)), vn: t.vn || null, vu: t.vn ? t.vn.map(norm) : null, ao: [1, 1, 1],
         lo: [Math.min(t.a[0], t.b[0], t.c[0]), Math.min(t.a[1], t.b[1], t.c[1]), Math.min(t.a[2], t.b[2], t.c[2])],
         hi: [Math.max(t.a[0], t.b[0], t.c[0]), Math.max(t.a[1], t.b[1], t.c[1]), Math.max(t.a[2], t.b[2], t.c[2])] };
     });
@@ -264,10 +264,22 @@
   function hitModel(shape, o, d) {
     var h = hitMesh(getMesh(shape), o, d, Infinity, false);
     if (!h) return null;
-    var tr = h.tri, p = add(o, mul(d, h.t)), w = 1 - h.u - h.v, n = tr.n;
-    if (tr.vn) n = norm(add(add(mul(tr.vn[0], w), mul(tr.vn[1], h.u)), mul(tr.vn[2], h.v)));
-    /* gn is the true facet normal: shadow rays start just off the facet itself */
-    return { t: h.t, p: p, n: n, gn: tr.n, mesh: true, ao: tr.ao[0] * w + tr.ao[1] * h.u + tr.ao[2] * h.v };
+    var tr = h.tri, p = add(o, mul(d, h.t)), w = 1 - h.u - h.v, n = tr.n, sp = p;
+    if (tr.vn) {
+      n = norm(add(add(mul(tr.vn[0], w), mul(tr.vn[1], h.u)), mul(tr.vn[2], h.v)));
+      /* Shadow rays start on the smooth surface the corner normals describe, not on the flat facet. Each corner's
+       * tangent plane lifts the point outward by however far it sits below that plane, and the lifts are blended
+       * like the normal. Starting on the facet itself, a ray toward a light that grazes a curved part of the head
+       * runs into the neighboring facets, which cut jagged, triangle-shaped shadows along the terminator. */
+      var corners = [tr.a, add(tr.a, tr.e1), add(tr.a, tr.e2)], bw = [w, h.u, h.v], lift = [0, 0, 0];
+      for (var k = 0; k < 3; k++) {
+        var below = dot(sub(p, corners[k]), tr.vu[k]);
+        if (below < 0) lift = add(lift, mul(tr.vu[k], -below * bw[k]));
+      }
+      sp = add(p, lift);
+    }
+    /* gn is the true facet normal; sp is where shadow rays start, just off the surface */
+    return { t: h.t, p: p, n: n, gn: tr.n, sp: add(sp, mul(tr.n, 2e-3)), flat: dot(n, tr.n) > 0.999, mesh: true, ao: tr.ao[0] * w + tr.ao[1] * h.u + tr.ao[2] * h.v };
   }
 
   /* Whether the model blocks light direction L from point p; reach is how far away the light is. */
@@ -366,7 +378,7 @@
   function shadeObject(S, p, n, V, albedo, hit) {
     var w = 0.12 + S.subsurface * 0.6, keyNdl = 0, rimC = [0, 0, 0];
     var h = p[1] - GROUND_Y;
-    var mesh = !!(hit && hit.mesh), crease = mesh ? hit.ao : 1, lift = mesh ? add(p, mul(hit.gn, 2e-3)) : p;
+    var mesh = !!(hit && hit.mesh), crease = mesh ? hit.ao : 1, lift = mesh ? hit.sp : p;
     var ao = (1 - 0.55 * Math.exp(-h * 3.2) * Math.max(0, -n[1])) * crease;
     var c = add(mulv(albedo, mul(irradiance(S, n), S.ambient * ao)), mul(groundBounce(S, n, albedo, h), crease));
     for (var i = 0; i < S.lights.length; i++) {
@@ -375,7 +387,7 @@
       var kl = lightAt(Lt, p), L = kl.L, ndl = dot(n, L);
       if (i === S.mainLight) keyNdl = ndl;
       /* cast shadow from the rest of the head; where it falls the light is treated as if the plane faced away */
-      if (mesh && ndl > -w && (dot(hit.gn, L) <= 0 || modelBlocks(S.shape, lift, L, kl.reach))) {
+      if (mesh && ndl > -w && ((hit.flat && dot(hit.gn, L) <= 0) || modelBlocks(S.shape, lift, L, kl.reach))) {
         if (i === S.mainLight) keyNdl = Math.min(ndl, -0.2);
         if (Lt.rim) continue;
         if (S.subsurface > 0 && !S.toon) c = add(c, mul(mulv(mulv(albedo, albedo), kl.rad), S.subsurface * 0.12));
