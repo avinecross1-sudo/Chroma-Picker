@@ -20,6 +20,22 @@ const { chromium } = require('playwright'); const path = require('path');
   await pg.mouse.move(vp.x + vp.width * 0.5, vp.y + vp.height * 0.8); await pg.mouse.down();
   await pg.mouse.move(vp.x + vp.width * 0.7, vp.y + vp.height * 0.8, { steps: 5 }); await pg.mouse.up(); await pg.waitForTimeout(300);
   await log('orbit');
+  // zoom: wheel, pinch (wheel + Ctrl), buttons, keys, Alt-drag, clamping, undo and reset
+  const zm = () => pg.evaluate(() => +ChromaPicker.state.zoom.toFixed(3));
+  await pg.mouse.move(vp.x + vp.width * 0.5, vp.y + vp.height * 0.5);
+  await pg.mouse.wheel(0, -300); await pg.waitForTimeout(500); const zWheel = await zm();
+  await pg.keyboard.down('Control'); await pg.mouse.wheel(0, 40); await pg.keyboard.up('Control'); await pg.waitForTimeout(500); const zPinch = await zm();
+  await pg.screenshot({ path: out + '/w_zoom_in.png' });
+  for (let i = 0; i < 12; i++) await pg.click('#btnZoomIn'); await pg.waitForTimeout(400); const zMax = await zm();
+  for (let i = 0; i < 12; i++) await pg.keyboard.press('-'); await pg.waitForTimeout(400); const zMin = await zm();
+  await pg.screenshot({ path: out + '/w_zoom_out.png' });
+  await pg.keyboard.press('0'); const zKey0 = await zm();
+  await pg.keyboard.down('Alt'); await pg.mouse.move(vp.x + vp.width * 0.5, vp.y + vp.height * 0.6); await pg.mouse.down();
+  await pg.mouse.move(vp.x + vp.width * 0.5, vp.y + vp.height * 0.4, { steps: 5 }); await pg.mouse.up(); await pg.keyboard.up('Alt'); await pg.waitForTimeout(300);
+  const zAlt = await zm(), yawAfterAlt = await pg.evaluate(() => Math.round(ChromaPicker.state.yaw));
+  await pg.keyboard.press('Control+z'); const zUndo = await zm();
+  await pg.click('#btnZoomIn'); await pg.waitForTimeout(400); await pg.click('#btnResetScene'); const zReset = await zm();
+  console.log('zoom', JSON.stringify({ zWheel, zPinch, zMax, zMin, zKey0, zAlt, yawAfterAlt, zUndo, zReset }));
   // drag key light handle
   const h0 = await (await pg.$('#handle0')).boundingBox();
   await pg.mouse.move(h0.x + h0.width / 2, h0.y + h0.height / 2); await pg.mouse.down();

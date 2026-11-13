@@ -31,10 +31,10 @@
     time: 10, ambient: 0.3,
     sheen: 0.8, softness: 1,
     specular: 0.3, reflectivity: 0, subsurface: 0, fog: 0, contrast: 1, toon: false, chrome: false,
-    yaw: 25, pitch: 7
+    yaw: 25, pitch: 7, zoom: 1
   };
   var UNDO_KEYS = Object.keys(DEFAULTS);
-  var SCENE_RESET_KEYS = ["az", "el", "fillAz", "fillEl", "yaw", "pitch"];
+  var SCENE_RESET_KEYS = ["az", "el", "fillAz", "fillEl", "yaw", "pitch", "zoom"];
 
   /* A model the user loaded from an .obj file: { name, data, note } with data packed like the built-in models.
    * It is kept apart from the undoable state, so undo changes which model is shown but never forgets one. */
@@ -44,6 +44,7 @@
   var state = Object.assign(JSON.parse(JSON.stringify(DEFAULTS)), store.get("state", {}));
   if (["sphere", "trio", "cube", "asaro", "asaroLow", "custom"].indexOf(state.shape) < 0) state.shape = state.shape === "head" ? "asaro" : DEFAULTS.shape;
   state.colors = Object.assign({}, DEFAULTS.colors, state.colors || {});
+  state.zoom = R.clampZoom(state.zoom);
   var ui = Object.assign({
     target: "shape", mode: "HSB", layout: "full", sampling: false, locked: false, trueColor: false, split: 0.5,
     overlays: true, showField: false, floating: false, showTod: true, sync: true, selLight: 0, brush: 30
@@ -177,7 +178,7 @@
       specular: state.specular, reflectivity: state.reflectivity, subsurface: state.subsurface,
       sheen: state.sheen, softness: state.softness,
       toon: state.toon, chrome: state.chrome, fog: state.fog, contrast: state.contrast,
-      shape: shownShape(), yaw: state.yaw, pitch: state.pitch,
+      shape: shownShape(), yaw: state.yaw, pitch: state.pitch, zoom: state.zoom,
       /* changes whenever the custom model does, so a new model is rendered even though the shape name is the same */
       modelRev: state.shape === "custom" ? customRev : 0,
       split: ui.trueColor ? ui.split : null
@@ -276,7 +277,7 @@
     $("railLightKnob").style.top = ((1 - (el + 90) / 180) * 100) + "%";
     $("railCamKnob").style.top = ((1 - (wrap180(state.pitch) + 180) / 360) * 100) + "%";
     $("overlay").style.display = ui.overlays ? "block" : "none";
-    $("btnResetScene").style.display = ui.overlays ? "flex" : "none";
+    $("vpTools").style.display = ui.overlays ? "flex" : "none";
     var sh = $("splitHandle"), lbl = $("splitLabel");
     cls(sh, "hidden", !ui.trueColor); cls(lbl, "hidden", !ui.trueColor);
     if (ui.trueColor) sh.style.left = (ui.split * 100) + "%";
@@ -765,6 +766,28 @@
     if (i === 0) { state.az = az; state.el = el; } else { state.fillAz = az; state.fillEl = el; }
   }
 
+  /* ---------- zoom ---------- */
+  /* Zoom steps multiply, so each step feels the same however far in or out the view is. A burst of wheel or pinch
+   * events is one undo step: the edit closes, and the sharp frame is rendered, once the wheel has been still a moment. */
+  var zoomIdle = null;
+  function setZoom(z, quiet) {
+    var nz = R.clampZoom(z);
+    if (Math.abs(nz - state.zoom) < 1e-4) { if (!quiet) zoomStatus(); return false; }
+    state.zoom = nz; requestRender(false);
+    if (!quiet) zoomStatus();
+    return true;
+  }
+  function zoomStatus() {
+    var pct = Math.round(state.zoom * 100);
+    status("Zoom " + pct + "%" + (state.zoom >= R.ZOOM_MAX - 1e-4 ? " (closest)" : state.zoom <= R.ZOOM_MIN + 1e-4 ? " (furthest)" : ""));
+  }
+  function zoomBy(factor) {
+    beginEdit(); setZoom(state.zoom * factor);
+    if (zoomIdle) clearTimeout(zoomIdle);
+    zoomIdle = setTimeout(function () { zoomIdle = null; endEdit(); requestRender(true); }, 300);
+  }
+  function zoomStep(dir) { zoomBy(Math.pow(1.2, dir)); }
+
   function bind() {
     each(document.querySelectorAll("[data-pop]"), function (b) {
       noDrag(b);
@@ -847,12 +870,25 @@
     });
 
     // viewport tool buttons
-    ["btnEye", "btnTrue", "btnResetScene"].forEach(function (id) { noDrag($(id)); });
+    ["btnEye", "btnTrue", "btnResetScene", "btnZoomIn", "btnZoomOut"].forEach(function (id) { noDrag($(id)); });
     $("btnEye").addEventListener("click", function () { ui.overlays = !ui.overlays; persist(); refreshAll(false); });
     $("btnTrue").addEventListener("click", function () { ui.trueColor = !ui.trueColor; persist(); refreshAll(true); });
     $("btnResetScene").addEventListener("click", function () {
       beginEdit(); SCENE_RESET_KEYS.forEach(function (k) { state[k] = DEFAULTS[k]; }); endEdit(); status("Scene reset");
     });
+    $("btnZoomIn").addEventListener("click", function () { zoomStep(1); });
+    $("btnZoomOut").addEventListener("click", function () { zoomStep(-1); });
+    /* mouse wheel, and a trackpad pinch, which browsers and the desktop app send as a wheel event with Ctrl held */
+    function onWheel(e) {
+      if (!e.deltaY) return;
+      e.preventDefault();
+      var dy = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1);
+      dy = Math.max(-120, Math.min(120, dy));
+      zoomBy(Math.exp(-dy * (e.ctrlKey ? 0.01 : 0.0015)));
+    }
+    /* passive: false lets the wheel be kept from scrolling the panel; an older host that rejects the options gets the plain form */
+    try { $("viewport").addEventListener("wheel", onWheel, { passive: false }); }
+    catch (err) { $("viewport").addEventListener("wheel", onWheel); }
 
     // light handles: drag to move, click to edit color
     [0, 1].forEach(function (i) {
@@ -887,15 +923,18 @@
     var drag = null;
     dragOn($("viewport"), {
       free: true,
-      start: function (p) {
+      start: function (p, e) {
         if (ui.trueColor && Math.abs(p[0] - ui.split) < 0.05) { drag = { kind: "split" }; return; }
         if (ui.sampling) { drag = { kind: "sample" }; return; }
+        /* Alt-drag up or down zooms: it works everywhere, including where the panel gets no wheel events */
+        if (e && e.altKey) { beginEdit(); drag = { kind: "zoom", zoom: state.zoom }; return; }
         /* upside down (past the top or bottom), a sideways drag turns the other way so the subject still follows the pointer */
         beginEdit(); drag = { kind: "orbit", yaw: state.yaw, pitch: state.pitch, flip: Math.cos(state.pitch * Math.PI / 180) < 0 ? -1 : 1 };
       },
       move: function (p, s) {
         if (!drag) return;
         if (drag.kind === "split") { ui.split = clamp(p[0], 0.02, 0.98); requestRender(false); return; }
+        if (drag.kind === "zoom") { setZoom(drag.zoom * Math.pow(4, s[1] - p[1])); return; }
         if (drag.kind === "orbit") {
           /* free 360° orbit in both directions: no limit on the tilt, so the camera can go over the top and underneath */
           state.yaw = wrap180(drag.yaw - (p[0] - s[0]) * 270 * drag.flip);
@@ -969,6 +1008,9 @@
       if (mod && (e.key === "y" || e.key === "Y")) { e.preventDefault(); redo(); return; }
       if (mod) return;
       if (e.key === "Escape") { showPop(null); if (ui.sampling) { ui.sampling = false; refreshAll(false); } }
+      else if (e.key === "+" || e.key === "=") zoomStep(1);
+      else if (e.key === "-" || e.key === "_") zoomStep(-1);
+      else if (e.key === "0") { beginEdit(); setZoom(1); endEdit(); requestRender(true); }
       else if (e.key === "x" || e.key === "X") swapColors();
       else if (e.key === "d" || e.key === "D") resetColors();
       else if ((e.key === "i" || e.key === "I") && B.canPickScreen) pickFromScreen();
