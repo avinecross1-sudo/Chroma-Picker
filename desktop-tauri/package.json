@@ -1,0 +1,17 @@
+{
+  "name": "chroma-picker-tauri",
+  "productName": "Chroma Picker",
+  "version": "1.9.0",
+  "description": "Chroma Picker as a small standalone desktop app (Tauri), using the system web view.",
+  "private": true,
+  "license": "UNLICENSED",
+  "scripts": {
+    "copy-ui": "node scripts/copy-ui.js",
+    "start": "npm run copy-ui && tauri dev",
+    "build": "npm run copy-ui && tauri build",
+    "icons": "tauri icon ../desktop/build/icon.png"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.8.0"
+  }
+}
