@@ -46,7 +46,8 @@ function buildMenu() {
     { label: 'View', submenu: [
       { label: 'Always on Top', type: 'checkbox', checked: onTop, accelerator: 'CmdOrCtrl+T', click: (m) => setAlwaysOnTop(m.checked) },
       { type: 'separator' },
-      { role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' },
+      /* these scale the whole interface; the model view zooms with the wheel, a pinch, + and -, or its zoom buttons */
+      { role: 'resetZoom', label: 'Actual Interface Size' }, { role: 'zoomIn', label: 'Larger Interface' }, { role: 'zoomOut', label: 'Smaller Interface' },
       { type: 'separator' },
       { role: 'reload' }, { role: 'toggleDevTools' }
     ] },

@@ -43,6 +43,11 @@
     }
     return shape === "trio" ? 5.3 : 4.3;
   }
+  /* How far the user has zoomed the view in (above 1) or out (below 1). The camera moves along its line of sight
+   * instead of narrowing the field of view, so the perspective stays natural and the subject never leaves the frame. */
+  var ZOOM_MIN = 0.5, ZOOM_MAX = 2.5;
+  function clampZoom(z) { return typeof z === "number" && isFinite(z) ? Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z)) : 1; }
+  function viewDist(S, aspect) { return camDist(S.shape, aspect) / clampZoom(S.zoom); }
   /* the point the camera orbits: the head is taller than the other subjects, so it is framed a little higher */
   function camTarget(shape) { return isMesh(shape) ? [0, 0.14, 0] : [0, -0.2, 0]; }
 
@@ -552,7 +557,7 @@
   /* Main render.
    * S: albedo, sky, horizon, ground (linear rgb), lights: [{ dir, color, intensity, spot }], ambient,
    *    specular, reflectivity, subsurface, sheen, softness, toon, chrome, fog, contrast,
-   *    shape ("sphere" | "trio" | "cube" | "asaro" | "asaroLow" | "custom"), yaw, pitch, split (null or 0..1), flatAlbedoRgb (sRGB 0..255)
+   *    shape ("sphere" | "trio" | "cube" | "asaro" | "asaroLow" | "custom"), yaw, pitch, zoom (0.5..2.5, 1 by default), split (null or 0..1), flatAlbedoRgb (sRGB 0..255)
    * Returns { rgb: Uint8Array, w, h, palette } */
   /* A render that can run in time slices, so the panel stays responsive while a sharp frame is computed.
    * job.step(ms) renders rows for about ms milliseconds and returns true when finished; job.result() gives the frame. */
@@ -563,7 +568,7 @@
     var S = prepare(S0);
     ss = ss || 1;
     edge = edge > ss ? edge : 0;
-    var cam = makeCamera(S.yaw, S.pitch, w / h, camDist(S.shape, w / h), camTarget(S.shape));
+    var cam = makeCamera(S.yaw, S.pitch, w / h, viewDist(S, w / h), camTarget(S.shape));
     S.fogStart = Math.sqrt(dot(cam.pos, cam.pos));
     var out = new Uint8Array(w * h * 3);
     var buckets = { hi: [], mid: [], shadow: [], bounce: [] }, allLum = [];
@@ -651,7 +656,7 @@
   function render(S0, w, h, ss, edge) { var job = renderJob(S0, w, h, ss, edge); job.step(null); return job.result(); }
 
   function lightHandle(S, aspect, i) {
-    var cam = makeCamera(S.yaw, S.pitch, aspect || 1, camDist(S.shape, aspect), camTarget(S.shape));
+    var cam = makeCamera(S.yaw, S.pitch, aspect || 1, viewDist(S, aspect), camTarget(S.shape));
     return project(cam, add(camTarget(S.shape), mul(S.lights[i || 0].dir, S.shape === "trio" ? 2.4 : isMesh(S.shape) ? 2.0 : 1.8)));
   }
 
@@ -662,7 +667,8 @@
     root.CPModelData = MODELS;
   }
 
-  var api = { setModel: setModel, hasModel: isMesh, render: render, renderJob: renderJob, dirFromAngles: dirFromAngles, lightHandle: lightHandle, makeCamera: makeCamera, project: project };
+  var api = { setModel: setModel, hasModel: isMesh, render: render, renderJob: renderJob, dirFromAngles: dirFromAngles, lightHandle: lightHandle, makeCamera: makeCamera, project: project,
+    clampZoom: clampZoom, ZOOM_MIN: ZOOM_MIN, ZOOM_MAX: ZOOM_MAX };
   root.CPRender = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })(typeof window !== "undefined" ? window : globalThis);

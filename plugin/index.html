@@ -82,7 +82,7 @@
           <button id="exportAseBtn" class="small">.ase</button>
           <button id="exportGplBtn" class="small">.gpl</button>
         </div>
-        <div class="hint">Click a swatch to use it, Alt-click for background, Shift-click a pin to remove it. X swaps, D resets, Ctrl/Cmd+Z undoes.</div>
+        <div class="hint">Click a swatch to use it, Alt-click for background, Shift-click a pin to remove it. X swaps, D resets, + and − zoom the view, Ctrl/Cmd+Z undoes.</div>
       </div>
     </div>
 
@@ -98,7 +98,11 @@
         <div id="sunMark" class="sun-mark" title="Sun: set by the time of day"><img src="icons/ui/sun.svg" alt=""></div>
         <div id="handle1" class="light-handle fill" title="Rim light: drag to move, click to edit its color"><img src="icons/ui/sun.svg" alt=""></div>
       </div>
-      <div class="ibtn vp corner" id="btnResetScene" title="Reset camera and lights"><img src="icons/ui/reset.svg" alt=""></div>
+      <div class="vp-tools" id="vpTools">
+        <div class="ibtn vp" id="btnZoomOut" title="Zoom out (wheel or pinch, Alt-drag, or the - key)"><img src="icons/ui/zoomout.svg" alt=""></div>
+        <div class="ibtn vp" id="btnZoomIn" title="Zoom in (wheel or pinch, Alt-drag, or the + key)"><img src="icons/ui/zoomin.svg" alt=""></div>
+        <div class="ibtn vp" id="btnResetScene" title="Reset camera, zoom and lights"><img src="icons/ui/reset.svg" alt=""></div>
+      </div>
       <div id="sampleHint" class="sample-hint hidden">Click the render to sample a lit shade</div>
 
       <!-- bottom overlay stack: floating color controls, then the time-of-day bar -->
