@@ -4,12 +4,17 @@ name: Desktop app (Tauri)
 on:
   workflow_dispatch:
   push:
+    # a version tag such as v1.9.0 also publishes the build as a GitHub release
+    tags: ["v*"]
     paths:
       - "plugin/**"
       - "desktop/gpu/**"
       - "desktop/build/icon.png"
       - "desktop-tauri/**"
       - ".github/workflows/desktop-tauri.yml"
+
+permissions:
+  contents: write
 
 jobs:
   windows:
@@ -42,3 +47,17 @@ jobs:
         with:
           name: ChromaPicker-windows
           path: desktop-tauri/out/*
+      - name: Publish the release (version tags only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Chroma Picker ${{ github.ref_name }}
+          files: |
+            desktop-tauri/out/*
+            dist/ChromaPicker.ccx
+          body: |
+            **Desktop app (Windows):** download the portable zip (unzip and run `chroma-picker.exe`) or the `-setup.exe` installer. Windows 10 and 11 already include the WebView2 runtime it uses. The builds are not code signed, so SmartScreen warns the first time: choose More info > Run anyway.
+
+            **Photoshop plugin:** `ChromaPicker.ccx`.
+
+            See README.md for what's new.
