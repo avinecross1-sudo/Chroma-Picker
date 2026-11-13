@@ -1,7 +1,7 @@
 {
   "name": "chroma-picker-desktop",
   "productName": "Chroma Picker",
-  "version": "1.7.0",
+  "version": "1.7.1",
   "description": "Chroma Picker as a standalone desktop app: pick colors under light without Photoshop.",
   "main": "main.js",
   "private": true,
