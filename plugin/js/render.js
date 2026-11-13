@@ -177,10 +177,20 @@
     return { tris: tris, standRadius: data.standRadius * s, pts: pts, pn: pn, pointAO: !!data.pointAO };
   }
 
+  /* A point lit and shadowed as part of a flat plane (see hitModel) takes its shadow from its facet: the facet
+   * turning away from the light is enough to shadow it, which keeps the planes of the heads crisp.
+   * On the built-in heads that is any point whose blended normal is within a couple of degrees of its facet's.
+   * A loaded model is usually a dense, smoothly curved mesh whose neighboring facets are themselves only a degree or
+   * two apart, so that test would pass nearly everywhere and the light would be cut off facet by facet along every
+   * terminator: with a low light, rows of triangle-shaped teeth over each bump. There only a triangle whose corner
+   * normals are all its own (it lies in a flat region) is treated as flat; the rest take their terminator from
+   * the blended normals and their cast shadows from the shadow ray, like the curved parts of the heads. */
+  var PLANE = 0.99999;
   function makeMesh(model) {
     var tris = model.tris.map(function (t) {
-      var e1 = sub(t.b, t.a), e2 = sub(t.c, t.a);
-      return { a: t.a, e1: e1, e2: e2, n: norm(cross(e1, e2)), vn: t.vn || null, vu: t.vn ? t.vn.map(norm) : null, ao: [1, 1, 1], ids: t.ids,
+      var e1 = sub(t.b, t.a), e2 = sub(t.c, t.a), n = norm(cross(e1, e2)), vu = t.vn ? t.vn.map(norm) : null;
+      var plane = !vu || (dot(vu[0], n) > PLANE && dot(vu[1], n) > PLANE && dot(vu[2], n) > PLANE);
+      return { a: t.a, e1: e1, e2: e2, n: n, vn: t.vn || null, vu: vu, plane: model.pointAO ? plane : null, ao: [1, 1, 1], ids: t.ids,
         lo: [Math.min(t.a[0], t.b[0], t.c[0]), Math.min(t.a[1], t.b[1], t.c[1]), Math.min(t.a[2], t.b[2], t.c[2])],
         hi: [Math.max(t.a[0], t.b[0], t.c[0]), Math.max(t.a[1], t.b[1], t.c[1]), Math.max(t.a[2], t.b[2], t.c[2])] };
     });
@@ -299,7 +309,7 @@
       n = tr.vn ? norm(add(add(mul(tr.vn[0], w), mul(tr.vn[1], h.u)), mul(tr.vn[2], h.v))) : tr.n;
       if (dot(n, d) > 0) n = mul(n, -1);
       var gb = mul(tr.n, -1);
-      return { t: h.t, p: p, n: n, gn: gb, sp: add(p, mul(gb, 2e-3)), flat: dot(n, gb) > 0.999, mesh: true, ao: ao };
+      return { t: h.t, p: p, n: n, gn: gb, sp: add(p, mul(gb, 2e-3)), flat: tr.plane == null ? dot(n, gb) > 0.999 : tr.plane, mesh: true, ao: ao };
     }
     if (tr.vn) {
       n = norm(add(add(mul(tr.vn[0], w), mul(tr.vn[1], h.u)), mul(tr.vn[2], h.v)));
@@ -315,7 +325,7 @@
       sp = add(p, lift);
     }
     /* gn is the true facet normal; sp is where shadow rays start, just off the surface */
-    return { t: h.t, p: p, n: n, gn: tr.n, sp: add(sp, mul(tr.n, 2e-3)), flat: dot(n, tr.n) > 0.999, mesh: true, ao: ao };
+    return { t: h.t, p: p, n: n, gn: tr.n, sp: add(sp, mul(tr.n, 2e-3)), flat: tr.plane == null ? dot(n, tr.n) > 0.999 : tr.plane, mesh: true, ao: ao };
   }
 
   /* Whether the model blocks light direction L from point p; reach is how far away the light is. */
