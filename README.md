@@ -8,7 +8,12 @@ Inspired by the idea behind colgart's Chroma Space. This is an independent imple
 
 ## Standalone app
 
-Chroma Picker also runs on its own, without Photoshop, as a small desktop window (Windows, macOS, Linux). It is the same panel and the same code: `desktop/` is an Electron shell that loads the files in `plugin/`.
+Chroma Picker also runs on its own, without Photoshop, as a small desktop window (Windows, macOS, Linux). It is the same panel and the same code, loaded from `plugin/` by one of two shells:
+
+- `desktop-tauri/` (recommended): a Tauri app that uses the system web view (WebView2 on Windows), so the download is a few megabytes instead of about 146 MB.
+- `desktop/`: the original Electron app.
+
+Both draw the 3D view on the graphics card: `desktop/gpu/gpu-render.js` runs the same ray tracer as `plugin/js/render.js` as a WebGL2 shader, so the picture is the same as the plugin's, and dragging, zooming and large windows stay smooth. Where WebGL2 is missing, the app falls back to the CPU renderer. Photoshop's UXP panels have no WebGL, so the plugin always uses the CPU renderer.
 
 What is different from the plugin:
 
@@ -27,6 +32,17 @@ npm run dist:win     # Windows installer, portable .exe and .zip in desktop/dist
 npm run dist:mac     # macOS .dmg (run on a Mac)
 npm run dist:linux   # Linux AppImage
 ```
+
+The Tauri app needs Node.js 20 and Rust (https://rustup.rs):
+
+```
+cd desktop-tauri
+npm install
+npm start            # run from source
+npm run build        # installer (.exe / .msi on Windows) in src-tauri/target/release/bundle
+```
+
+GitHub Actions also builds the Windows installers on every push that touches the app (workflow "Desktop app (Tauri)", artifact `ChromaPicker-windows`). Settings and colors are kept separately from the Electron app's.
 
 The builds are not code signed, so Windows SmartScreen shows a warning the first time; choose More info > Run anyway. `desktop/ui/` is copied from `plugin/` on every start and build, so edit the files under `plugin/`.
 

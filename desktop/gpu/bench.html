@@ -1,0 +1,50 @@
+<!doctype html><meta charset="utf-8"><title>GPU renderer bench</title>
+<body style="background:#2b2d31;color:#ddd;font:12px sans-serif">
+<canvas id="c"></canvas><pre id="out"></pre>
+<script src="../../plugin/js/color.js"></script>
+<script src="../../plugin/js/model-asaro.js"></script>
+<script src="../../plugin/js/model-asaro-low.js"></script>
+<script src="../../plugin/js/render.js"></script>
+<script src="gpu-render.js"></script>
+<script>
+/* Times the CPU and GPU renderers on the same scenes and checks they draw the same picture. */
+var C = CPColor, R = CPRender, lin = function (h) { return C.rgbToLinear(C.hexToRgb(h)); };
+function scene(shape, zoom) { return { albedo: lin('#C08060'), flatAlbedoRgb: [192, 128, 96], sky: lin('#3D9BEA'), horizon: lin('#E3DDF0'), ground: lin('#8FB57A'),
+  ambient: 0.3, specular: 0.3, reflectivity: 0, subsurface: 0.2, sheen: 0.8, softness: 1, toon: false, chrome: false, fog: 0, contrast: 1, shape: shape, yaw: 25, pitch: 7, zoom: zoom, split: null,
+  lights: [{ dir: R.dirFromAngles(-45, 38), color: lin('#FFF6E8'), intensity: 1.35, spot: false }, { dir: R.dirFromAngles(150, 20), color: lin('#AACCFF'), intensity: 1, spot: false, rim: true },
+    { dir: R.dirFromAngles(60, 30), color: lin('#FFE0B0'), intensity: 0.8, spot: false }] }; }
+function now() { return performance.now(); }
+window.runBench = function (sizes) {
+  var g = CPGpuRender.create(document.getElementById('c')), res = { renderer: g.renderer, rows: [] };
+  ['sphere', 'cube', 'asaroLow', 'asaro'].forEach(function (s) { [1, 2.5].forEach(function (z) {
+    var S = scene(s, z), row = { shape: s, zoom: z };
+    R.render(S, 8, 8, 1); g.render(S, 16, 16, 1); g.finish();           /* build meshes and compile first */
+    /* parity at the preview size, one sample per pixel each */
+    var a = R.render(S, sizes.pw, sizes.ph, 1); g.render(S, sizes.pw, sizes.ph, 1); var b = g.readRGB(), diff = 0, big = 0;
+    for (var i = 0; i < a.rgb.length; i++) { var d = Math.abs(a.rgb[i] - b[i]); diff += d; if (d > 24) big++; }
+    row.meanDiff = +(diff / a.rgb.length).toFixed(2); row.pctPixelsOff = +(100 * big / a.rgb.length).toFixed(2);
+    var t = now(); R.render(S, sizes.pw, sizes.ph, 1); row.cpuPreview = Math.round(now() - t);
+    t = now(); R.render(S, sizes.sw, sizes.sh, 1, 3); row.cpuSharp = Math.round(now() - t);
+    function gtime(w, h, ss) { g.render(S, w, h, ss); g.finish(); var n = 5, t0 = now(); for (var k = 0; k < n; k++) { g.render(S, w, h, ss); g.finish(); } return +((now() - t0) / n).toFixed(1); }
+    row.gpuPreview = gtime(sizes.pw, sizes.ph, 1); row.gpuSharp1x = gtime(sizes.sw, sizes.sh, 1); if (sizes.ss3) row.gpuSharp3x3 = gtime(sizes.sw, sizes.sh, 3);
+    if (sizes.big) row.gpu4K_2x2 = gtime(sizes.big[0], sizes.big[1], 2);
+    res.rows.push(row); console.log(JSON.stringify(row));
+  }); });
+  return res;
+};
+window.snap = function (shape, zoom, w, h, ss) { var g = CPGpuRender.create(document.getElementById('c')); var S = scene(shape, zoom);
+  g.render(S, w, h, ss); var gpu = Array.from(g.readRGB()); var cpu = Array.from(R.render(S, w, h, 1, 3).rgb); return { gpu: gpu, cpu: cpu }; };
+</script>
+<script>
+/* opened by hand (not by the test runner): run at once and show the numbers on the page */
+if (!navigator.webdriver) setTimeout(function () {
+  var o = document.getElementById('out'); o.textContent = 'Running... about 30 seconds.';
+  setTimeout(function () {
+    var r = runBench({ pw: 206, ph: 291, sw: 1020, sh: 1440, ss3: true });
+    var lines = ['Graphics: ' + r.renderer, '', 'shape      zoom | CPU quick  GPU quick | CPU sharp  GPU sharp(1x)  GPU sharp(3x3 AA) | match'];
+    r.rows.forEach(function (x) { lines.push((x.shape + '          ').slice(0, 10) + ' ' + x.zoom + '  | ' + (x.cpuPreview + ' ms      ').slice(0, 10) + ' ' + (x.gpuPreview + ' ms      ').slice(0, 10) + ' | ' +
+      (x.cpuSharp + ' ms      ').slice(0, 10) + ' ' + (x.gpuSharp1x + ' ms          ').slice(0, 14) + ' ' + (x.gpuSharp3x3 + ' ms           ').slice(0, 18) + ' | ' + (100 - x.pctPixelsOff).toFixed(1) + '%'); });
+    o.textContent = lines.join('\n');
+  }, 50);
+}, 300);
+</script>

@@ -1,5 +1,5 @@
 // Playwright smoke test of the panel with the browser mock of Photoshop.
-// Usage: node test/browser.js <screenshot-dir>
+// Usage: node test/browser.js <screenshot-dir>   (CP_PAGE=../desktop/ui/index.html tests the desktop build with the GPU view)
 const { chromium } = require('playwright'); const path = require('path');
 (async () => {
   const out = process.argv[2] || '.';
@@ -8,7 +8,7 @@ const { chromium } = require('playwright'); const path = require('path');
   const errs = [];
   pg.on('pageerror', e => errs.push('pageerror ' + e.message));
   pg.on('console', m => { if (m.type() === 'error' || m.type() === 'warning') errs.push(m.type() + ' ' + m.text()); });
-  await pg.goto('file://' + path.resolve(__dirname, '../plugin/index.html'));
+  await pg.goto('file://' + path.resolve(__dirname, process.env.CP_PAGE || '../plugin/index.html'));
   await pg.waitForTimeout(1000);
   await pg.screenshot({ path: out + '/w1.png' });
   const st = () => pg.evaluate(() => ({ shape: ChromaPicker.state.colors.shape, fg: CPBridge._mock.fg, bg: CPBridge._mock.bg,
