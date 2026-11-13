@@ -270,7 +270,8 @@
   }
 
   function create(canvas) {
-    var gl = canvas.getContext("webgl2", { preserveDrawingBuffer: true, antialias: false });
+    var gl = null;
+    try { gl = canvas.getContext("webgl2", { preserveDrawingBuffer: true, antialias: false, powerPreference: "high-performance" }); } catch (e) { gl = null; }
     if (!gl) return null;
     function sh(type, src) { var s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; }
     var prog = gl.createProgram();
@@ -298,8 +299,9 @@
       loaded = key;
     }
 
-    /* Draws the scene S (the same object render.js takes) at w x h with ss x ss samples per pixel. */
-    function render(S0, w, h, ss) {
+    /* Draws the scene S (the same object render.js takes) at w x h with ss x ss samples per pixel.
+     * rows = [top, bottom] draws only that band of rows, so a heavy frame can be spread over several animation frames. */
+    function render(S0, w, h, ss, rows) {
       var S = R.prepare(S0);
       if (canvas.width !== w) canvas.width = w;
       if (canvas.height !== h) canvas.height = h;
@@ -326,7 +328,9 @@
       gl.uniform3fv(u("Ldir"), dir); gl.uniform3fv(u("Lcol"), col); gl.uniform1fv(u("Lint"), it); gl.uniform1iv(u("Lspot"), spot); gl.uniform1iv(u("Lrim"), rim);
       gl.uniform1i(u("nLights"), L.length); gl.uniform1i(u("mainLight"), S.mainLight || 0);
       gl.uniform1f(u("splitX"), S.split == null ? 1e9 : Math.round(S.split * w)); gl.uniform3fv(u("flatRgb"), S.flatAlbedoRgb || [128, 128, 128]);
+      if (rows) { gl.enable(gl.SCISSOR_TEST); gl.scissor(0, Math.max(0, h - rows[1]), w, rows[1] - rows[0]); }
       gl.drawArrays(gl.TRIANGLES, 0, 3);
+      if (rows) gl.disable(gl.SCISSOR_TEST);
     }
     /* waits for the frame and returns its pixels as RGB rows from the top, like render.js */
     function readRGB() {

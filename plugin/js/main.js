@@ -206,6 +206,7 @@
       if (key === jobKey) return;              /* the sharp frame for this exact scene is already on its way */
       jobToken++; jobKey = null;
       clearTimeout(hqTimer);
+      if (G && ui.layout !== "classic") { gpuFrame(S, key, q); return; }
       /* a large sharp frame takes a few seconds, so make sure the scene is on screen in rough form first */
       if (q) { if (previewKey !== key && ui.layout !== "classic") renderPreview(S, key); startSharpRender(S, key); }
       else { renderPreview(S, key); hqTimer = setTimeout(function () { requestRender(true); }, 140); }
@@ -252,6 +253,61 @@
       if (token !== jobToken) return;
       if (job.step(14)) { jobKey = null; sharpKey = key; showFrame(job.result(), S); }
       else setTimeout(tick, 0);
+    })();
+  }
+
+  /* ---------- GPU drawing (desktop app) ----------
+   * Where the graphics card is available (the standalone app loads js/gpu-render.js; Photoshop panels have no
+   * WebGL), the view is drawn by the same ray tracer run as a shader: every frame at the full pixel size, and once
+   * the scene settles again with 3 x 3 samples per pixel, a band of rows per animation frame. The lit palette and
+   * the eyedropper still come from the CPU: the palette from a small render made in slices once the view is still,
+   * the eyedropper from the finished frame read back from the card. */
+  var G = null, GPU_PIXELS = 8000000, PALETTE_PIXELS = 30000;
+  function initGpu() {
+    if (!window.CPGpuRender) return;
+    var img = $("previewImg"), cv = document.createElement("canvas");
+    cv.id = "previewGl"; cv.className = "fill";
+    img.parentNode.insertBefore(cv, img.nextSibling);
+    try { G = window.CPGpuRender.create(cv); } catch (e) { G = null; if (window.console) console.warn("GPU view unavailable:", e && e.message); }
+    if (!G) { cv.parentNode.removeChild(cv); return; }
+    img.style.display = "none";
+    /* if the graphics driver resets, carry on with the CPU renderer */
+    cv.addEventListener("webglcontextlost", function (e) {
+      e.preventDefault(); G = null; cv.style.display = "none"; img.style.display = "";
+      sharpKey = null; jobToken++; requestRender(true);
+    });
+  }
+  function gpuFrame(S, key, hq) {
+    sharpKey = null; previewKey = key;
+    var sz = viewSize(), f = frameSize(clamp(Math.min(sz.w * pixelRatio(), Math.sqrt(GPU_PIXELS * sz.w / Math.max(1, sz.h))), 120, 8000));
+    placeOverlay(S, f.w / f.h);
+    if (!hq) {
+      G.render(S, f.w, f.h, 1);
+      hqTimer = setTimeout(function () { requestRender(true); }, 140);
+      return;
+    }
+    var token = jobToken, y = 0, band = Math.max(32, Math.ceil(f.h / 6));
+    var cv = $("previewGl");
+    if (cv.width !== f.w || cv.height !== f.h) G.render(S, f.w, f.h, 1);
+    jobKey = key;
+    (function tick() {
+      if (token !== jobToken) return;
+      G.render(S, f.w, f.h, 3, [y, Math.min(f.h, y + band)]);
+      y += band;
+      if (y < f.h) { raf(tick); return; }
+      jobKey = null; sharpKey = key;
+      lastRender = { rgb: G.readRGB(), w: f.w, h: f.h, palette: lastRender && lastRender.palette };
+      gpuPalette(S, token);
+    })();
+  }
+  function gpuPalette(S, token) {
+    var sz = viewSize(), f = frameSize(clamp(Math.sqrt(PALETTE_PIXELS * sz.w / Math.max(1, sz.h)), 60, sz.w));
+    var job = R.renderJob(S, f.w, f.h, 1);
+    (function tick() {
+      if (token !== jobToken) return;
+      if (!job.step(10)) { setTimeout(tick, 0); return; }
+      if (lastRender) lastRender.palette = job.result().palette;
+      renderPalette();
     })();
   }
 
@@ -411,7 +467,7 @@
   var PAL_NAMES = [["base", "Base"], ["hi", "Highlight"], ["mid", "Midtone"], ["shadow", "Shadow"], ["bounce", "Bounce"]];
   function paletteColors() {
     var out = [{ name: "Base", hex: state.colors.shape }];
-    if (lastRender) PAL_NAMES.slice(1).forEach(function (p) { out.push({ name: p[1], hex: C.rgbToHex(lastRender.palette[p[0]]) }); });
+    if (lastRender && lastRender.palette) PAL_NAMES.slice(1).forEach(function (p) { out.push({ name: p[1], hex: C.rgbToHex(lastRender.palette[p[0]]) }); });
     return out;
   }
   function renderPalette() {
@@ -1076,6 +1132,7 @@
 
   /* ---------- start ---------- */
   function init() {
+    initGpu();
     setupHostUI();
     buildChannelSliders(); buildSliders(); buildPresetList();
     bind(); renderSwatches();
