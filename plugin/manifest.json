@@ -1,7 +1,7 @@
 {
   "id": "com.chromapicker.panel",
   "name": "Chroma Picker",
-  "version": "1.7.1",
+  "version": "1.8.0",
   "main": "index.html",
   "manifestVersion": 5,
   "host": { "app": "PS", "minVersion": "23.3.0" },
