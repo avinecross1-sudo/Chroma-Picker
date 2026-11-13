@@ -70,6 +70,14 @@ const { chromium } = require('playwright'); const path = require('path');
     await pg.keyboard.press('Escape'); await pg.waitForTimeout(3000); await pg.screenshot({ path: out + '/w_' + m + '.png' });
     console.log('model', await pg.evaluate(() => ChromaPicker.state.shape));
   }
+  // custom .obj model: load through the file picker, tip it, and check it is remembered
+  const objFile = path.join(require('os').tmpdir(), 'cp-test-pyramid.obj');
+  require('fs').writeFileSync(objFile, 'v -1 -1 0\nv 1 -1 0\nv 1 1 0\nv -1 1 0\nv 0 0 2\nf 1 2 3 4\nf 1 2 5\nf 2 3 5\nf 3 4 5\nf 4 1 5\n');
+  await pg.click('#btnMaterial');
+  const [chooser] = await Promise.all([pg.waitForEvent('filechooser'), pg.click('#loadObjBtn')]);
+  await chooser.setFiles(objFile); await pg.waitForTimeout(400); await pg.click('#tipObjBtn'); await pg.waitForTimeout(200);
+  await pg.screenshot({ path: out + '/w_custom_menu.png' }); await pg.keyboard.press('Escape'); await pg.waitForTimeout(2500); await pg.screenshot({ path: out + '/w_custom.png' });
+  console.log('custom model', await pg.evaluate(() => [ChromaPicker.state.shape, document.getElementById('customShapeBtn').textContent, !!localStorage.getItem('chromaPicker.v4.customModel')]));
   const t0 = Date.now(); await pg.evaluate(() => { for (let i = 0; i < 20; i++) { ChromaPicker.state.az += 3; ChromaPicker.refresh(false); } }); console.log('20 refresh calls ms', Date.now() - t0);
   console.log('errors', errs); await b.close();
 })();
