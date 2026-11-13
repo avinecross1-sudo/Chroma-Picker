@@ -685,7 +685,11 @@
     root.CPModelData = MODELS;
   }
 
-  var api = { setModel: setModel, hasModel: isMesh, render: render, renderJob: renderJob, dirFromAngles: dirFromAngles, lightHandle: lightHandle, makeCamera: makeCamera, project: project,
+  /* for other renderers of the same scene (the desktop app's GPU path): the camera, the prepared scene and the built mesh */
+  function sceneCamera(S, aspect) { var cam = makeCamera(S.yaw, S.pitch, aspect, viewDist(S, aspect), camTarget(S.shape)); return cam; }
+  function meshOf(shape) { return isMesh(shape) ? getMesh(shape) : null; }
+
+  var api = { sceneCamera: sceneCamera, prepare: prepare, meshOf: meshOf, setModel: setModel, hasModel: isMesh, render: render, renderJob: renderJob, dirFromAngles: dirFromAngles, lightHandle: lightHandle, makeCamera: makeCamera, project: project,
     clampZoom: clampZoom, ZOOM_MIN: ZOOM_MIN, ZOOM_MAX: ZOOM_MAX };
   root.CPRender = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
