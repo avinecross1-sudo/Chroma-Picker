@@ -130,7 +130,7 @@
   var MODEL_RADIUS = 0.95;                             /* furthest a model reaches out from its vertical axis (the heads reach 0.88) */
   var SMOOTH = Math.cos(22 * DEG);                     /* facets that meet at less than this angle are blended */
   function isMesh(shape) { return !!MODELS[shape]; }
-  function getMesh(shape) { return meshes[shape] || (meshes[shape] = makeMesh(unpackModel(MODELS[shape]))); }
+  function getMesh(shape) { return meshes[shape] || (meshes[shape] = makeMesh(unpackModel(MODELS[shape], shape))); }
 
   function base64Words(b64) {
     var A = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/", bytes = [], acc = 0, bits = 0;
@@ -147,7 +147,7 @@
 
   /* Turns packed model data into triangles in scene units, standing on the ground and centered on the origin.
    * A model is scaled to the height of a head, or less when it is wide, so that it stays in view as it turns. */
-  function unpackModel(data) {
+  function unpackModel(data, shape) {
     var pw = base64Words(data.points), tw = base64Words(data.tris), lo = data.lo, hi = data.hi;
     var ext = [hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]], reach = 0, pts = [], i, k;
     for (i = 0; i < pw.length; i += 3) {
@@ -179,7 +179,7 @@
     });
     /* point normals, for occlusion sampled once per point */
     var pn = around.map(function (list) { var sum = [0, 0, 0]; for (var j = 0; j < list.length; j++) sum = add(sum, list[j].area); return norm(sum); });
-    return { tris: tris, standRadius: data.standRadius * s, pts: pts, pn: pn, pointAO: !!data.pointAO };
+    return { tris: tris, standRadius: data.standRadius * s, pts: pts, pn: pn, pointAO: !!data.pointAO, dense: shape === "asaro" };
   }
 
   /* A point lit and shadowed as part of a flat plane (see hitModel) takes its shadow from its facet: the facet
@@ -195,7 +195,7 @@
     var tris = model.tris.map(function (t) {
       var e1 = sub(t.b, t.a), e2 = sub(t.c, t.a), n = norm(cross(e1, e2)), vu = t.vn ? t.vn.map(norm) : null;
       var plane = !vu || (dot(vu[0], n) > PLANE && dot(vu[1], n) > PLANE && dot(vu[2], n) > PLANE);
-      return { a: t.a, e1: e1, e2: e2, n: n, vn: t.vn || null, vu: vu, plane: model.pointAO ? plane : null, ao: [1, 1, 1], ids: t.ids,
+      return { a: t.a, e1: e1, e2: e2, n: n, vn: t.vn || null, vu: vu, plane: model.pointAO || model.dense ? plane : null, dense: !!model.dense, ao: [1, 1, 1], ids: t.ids,
         lo: [Math.min(t.a[0], t.b[0], t.c[0]), Math.min(t.a[1], t.b[1], t.c[1]), Math.min(t.a[2], t.b[2], t.c[2])],
         hi: [Math.max(t.a[0], t.b[0], t.c[0]), Math.max(t.a[1], t.b[1], t.c[1]), Math.max(t.a[2], t.b[2], t.c[2])] };
     });
@@ -314,7 +314,7 @@
       n = tr.vn ? norm(add(add(mul(tr.vn[0], w), mul(tr.vn[1], h.u)), mul(tr.vn[2], h.v))) : tr.n;
       if (dot(n, d) > 0) n = mul(n, -1);
       var gb = mul(tr.n, -1);
-      return { t: h.t, p: p, n: n, gn: gb, sp: add(p, mul(gb, 2e-3)), flat: tr.plane == null ? dot(n, gb) > 0.999 : tr.plane, mesh: true, ao: ao };
+      return { t: h.t, p: p, n: n, gn: gb, sp: add(p, mul(gb, 2e-3)), flat: tr.plane == null ? dot(n, gb) > 0.999 : tr.plane, dense: tr.dense, mesh: true, ao: ao };
     }
     if (tr.vn) {
       n = norm(add(add(mul(tr.vn[0], w), mul(tr.vn[1], h.u)), mul(tr.vn[2], h.v)));
@@ -330,11 +330,26 @@
       sp = add(p, lift);
     }
     /* gn is the true facet normal; sp is where shadow rays start, just off the surface */
-    return { t: h.t, p: p, n: n, gn: tr.n, sp: add(sp, mul(tr.n, 2e-3)), flat: tr.plane == null ? dot(n, tr.n) > 0.999 : tr.plane, mesh: true, ao: ao };
+    return { t: h.t, p: p, n: n, gn: tr.n, sp: add(sp, mul(tr.n, 2e-3)), flat: tr.plane == null ? dot(n, tr.n) > 0.999 : tr.plane, dense: tr.dense, mesh: true, ao: ao };
   }
 
   /* Whether the model blocks light direction L from point p; reach is how far away the light is. */
   function modelBlocks(shape, p, L, reach) { return !!hitMesh(getMesh(shape), p, L, reach || Infinity, true); }
+
+  /* How much of a light reaches a point on the detailed Asaro head (0..1). The head is a simplified scan: its facets
+   * meet at uneven angles, so where the light grazes the surface a shadow ray clips the neighboring facets or the
+   * small bumps beyond them, and an all-or-nothing test tears the edge of the light into triangle-shaped teeth.
+   * There a blocked light fades out with the angle to the light instead, so the edge follows the smooth normals:
+   * a blocker within NEAR of the point (the next facets over) fades the light up to TERMINATOR, one further away
+   * only up to GRAZE, so the jaw over the neck or the nose over the cheek still casts a hard shadow. Like the loaded
+   * models, only a triangle that lies in a flat region is cut off by its facet turning away from the light. */
+  var NEAR = 0.08, TERMINATOR = 0.35, GRAZE = 0.15;
+  function denseLit(shape, hit, p, L, reach, ndl, w) {
+    var mesh = getMesh(shape), far = reach || Infinity;
+    if (far > NEAR && hitMesh(mesh, add(p, mul(L, NEAR)), L, far - NEAR, true)) return 1 - smooth(-w, GRAZE, ndl);
+    if ((hit.flat && dot(hit.gn, L) <= 0) || hitMesh(mesh, p, L, Math.min(NEAR, far), true)) return 1 - smooth(-w, TERMINATOR, ndl);
+    return 1;
+  }
 
   function hitObject(shape, o, d) {
     if (shape === "cube") return hitCube(o, d);
@@ -438,39 +453,42 @@
       var kl = lightAt(Lt, p), L = kl.L, ndl = dot(n, L);
       if (i === S.mainLight) keyNdl = ndl;
       /* cast shadow from the rest of the head; where it falls the light is treated as if the plane faced away */
-      if (mesh && ndl > -w && ((hit.flat && dot(hit.gn, L) <= 0) || modelBlocks(S.shape, lift, L, kl.reach))) {
+      var lit = 1;
+      if (mesh && ndl > -w) lit = hit.dense ? denseLit(S.shape, hit, lift, L, kl.reach, ndl, w) : (hit.flat && dot(hit.gn, L) <= 0) || modelBlocks(S.shape, lift, L, kl.reach) ? 0 : 1;
+      if (lit <= 0) {
         if (i === S.mainLight) keyNdl = Math.min(ndl, -0.2);
         if (Lt.rim) continue;
         if (S.subsurface > 0 && !S.toon) c = add(c, mul(mulv(mulv(albedo, albedo), kl.rad), S.subsurface * 0.12));
         continue;
       }
+      var rad = lit < 1 ? mul(kl.rad, lit) : kl.rad;
       var dif = S.toon ? (ndl > 0.5 ? 1 : ndl > 0.02 ? 0.55 : 0) : Math.max(0, (ndl + w) / (1 + w));
       /* A rim light only catches the edges that turn away from the camera. It is added after the sheen
        * so the bright outline is not washed out, and partly keeps the light's own color. */
       /* On a head that edge test would switch whole planes on and off as the camera orbits, so there the rim
        * light is a plain light from its own direction: it lights the planes that face it, wherever you look from. */
       if (Lt.rim && mesh) {
-        rimC = add(rimC, mulv(lerp3(albedo, [1, 1, 1], 0.25), mul(kl.rad, dif * 0.85)));
+        rimC = add(rimC, mulv(lerp3(albedo, [1, 1, 1], 0.25), mul(rad, dif * 0.85)));
         continue;
       }
       if (Lt.rim) {
         var edge = 1 - Math.max(0, dot(n, V));
         var rd = Math.max(0, (ndl + 0.45) / 1.45) * edge * edge * 1.6;
         if (S.toon) rd = rd > 0.35 ? 0.8 : 0;
-        rimC = add(rimC, mulv(lerp3(albedo, [1, 1, 1], 0.45), mul(kl.rad, rd)));
+        rimC = add(rimC, mulv(lerp3(albedo, [1, 1, 1], 0.45), mul(rad, rd)));
         continue;
       }
-      c = add(c, mulv(albedo, mul(kl.rad, dif)));
+      c = add(c, mulv(albedo, mul(rad, dif)));
       if (S.subsurface > 0) {
         var term = Math.exp(-ndl * ndl * 10) * S.subsurface * 0.45;
-        c = add(c, mul(mulv(mulv(albedo, albedo), kl.rad), term));
+        c = add(c, mul(mulv(mulv(albedo, albedo), rad), term));
       }
       if (S.specular > 0 && ndl > 0) {
         var H = norm(add(L, V));
         var shin = 12 + S.reflectivity * 140 + S.specular * 24;
         var sp = Math.pow(Math.max(0, dot(n, H)), shin);
         if (S.toon) sp = sp > 0.5 ? 1 : 0;
-        c = add(c, mul(kl.rad, sp * S.specular * 0.5));
+        c = add(c, mul(rad, sp * S.specular * 0.5));
       }
     }
     var nv = Math.max(0, dot(n, V));
