@@ -36,8 +36,13 @@
   var UNDO_KEYS = Object.keys(DEFAULTS);
   var SCENE_RESET_KEYS = ["az", "el", "fillAz", "fillEl", "yaw", "pitch"];
 
+  /* A model the user loaded from an .obj file: { name, data, note } with data packed like the built-in models.
+   * It is kept apart from the undoable state, so undo changes which model is shown but never forgets one. */
+  var customModel = store.get("customModel", null), customRev = 0;
+  if (customModel && customModel.data && customModel.data.points) R.setModel("custom", customModel.data); else customModel = null;
+
   var state = Object.assign(JSON.parse(JSON.stringify(DEFAULTS)), store.get("state", {}));
-  if (["sphere", "trio", "cube", "asaro", "asaroLow"].indexOf(state.shape) < 0) state.shape = state.shape === "head" ? "asaro" : DEFAULTS.shape;
+  if (["sphere", "trio", "cube", "asaro", "asaroLow", "custom"].indexOf(state.shape) < 0) state.shape = state.shape === "head" ? "asaro" : DEFAULTS.shape;
   state.colors = Object.assign({}, DEFAULTS.colors, state.colors || {});
   var ui = Object.assign({
     target: "shape", mode: "HSB", layout: "full", sampling: false, locked: false, trueColor: false, split: 0.5,
@@ -172,7 +177,9 @@
       specular: state.specular, reflectivity: state.reflectivity, subsurface: state.subsurface,
       sheen: state.sheen, softness: state.softness,
       toon: state.toon, chrome: state.chrome, fog: state.fog, contrast: state.contrast,
-      shape: state.shape, yaw: state.yaw, pitch: state.pitch,
+      shape: shownShape(), yaw: state.yaw, pitch: state.pitch,
+      /* changes whenever the custom model does, so a new model is rendered even though the shape name is the same */
+      modelRev: state.shape === "custom" ? customRev : 0,
       split: ui.trueColor ? ui.split : null
     };
   }
@@ -608,7 +615,8 @@
     $("tHorizon").style.backgroundColor = L.horizon;
     $("tGround").style.backgroundColor = L.ground;
     each(document.querySelectorAll(".target"), function (t) { cls(t, "sel", t.getAttribute("data-t") === ui.target); });
-    setSeg("shapeSeg", state.shape); setSeg("layoutSeg", ui.layout);
+    setSeg("shapeSeg", shownShape()); setSeg("layoutSeg", ui.layout);
+    refreshCustomUi();
     cls($("spotBtn"), "on", state.spot); cls($("fillOnBtn"), "on", state.fillOn);
     cls($("toonBtn"), "on", state.toon); cls($("chromeBtn"), "on", state.chrome);
     cls($("syncBtn"), "on", ui.sync);
@@ -783,6 +791,28 @@
     });
 
     onSeg("shapeSeg", function (v) { beginEdit(); state.shape = v; endEdit(); });
+    $("loadObjBtn").addEventListener("click", function () {
+      B.openTextFile("obj").then(function (f) { if (f) loadObjText(f.name, f.text); }, function (e) { status("Could not open the file"); console.error(e); });
+    });
+    $("tipObjBtn").addEventListener("click", function () { turnCustom("x"); });
+    $("turnObjBtn").addEventListener("click", function () { turnCustom("y"); });
+    $("removeObjBtn").addEventListener("click", function () {
+      customModel = null; customRev++; R.setModel("custom", null); store.set("customModel", null);
+      if (state.shape === "custom") { beginEdit(); state.shape = "asaro"; endEdit(); }
+      status("Custom model removed"); refreshAll(true);
+    });
+    /* an .obj file dropped on the view becomes the model (browser and desktop app) */
+    var vpEl = $("viewport");
+    vpEl.addEventListener("dragover", function (e) { if (e.dataTransfer) { e.preventDefault(); cls(vpEl, "drop-target", true); } });
+    vpEl.addEventListener("dragleave", function () { cls(vpEl, "drop-target", false); });
+    vpEl.addEventListener("drop", function (e) {
+      cls(vpEl, "drop-target", false);
+      var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+      if (!f) return;
+      e.preventDefault();
+      if (!/\.obj$/i.test(f.name)) { status("Drop an .obj file"); return; }
+      B.readFile(f).then(function (r) { loadObjText(r.name, r.text); }, function () { status("Could not read the file"); });
+    });
     $("spotBtn").addEventListener("click", function () { beginEdit(); state.spot = !state.spot; endEdit(); });
     $("fillOnBtn").addEventListener("click", function () { beginEdit(); state.fillOn = !state.fillOn; endEdit(); });
     $("toonBtn").addEventListener("click", function () { beginEdit(); state.toon = !state.toon; endEdit(); });
@@ -1026,6 +1056,54 @@
     }, 250);
   }
 
-  window.ChromaPicker = { state: state, ui: ui, refresh: refreshAll, undo: undo, redo: redo, host: host };
+  /* ---------- custom model ---------- */
+  /* the shape actually drawn: a custom model that was removed falls back to the detailed head */
+  function shownShape() { return state.shape === "custom" && !customModel ? "asaro" : state.shape; }
+
+  function refreshCustomUi() {
+    var has = !!customModel, on = has && state.shape === "custom", btn = $("customShapeBtn");
+    cls(btn, "hidden", !has);
+    if (has) { btn.textContent = customModel.name.replace(/\.obj$/i, ""); btn.title = customModel.name; }
+    ["tipObjBtn", "turnObjBtn", "removeObjBtn"].forEach(function (id) { cls($(id), "hidden", !on); });
+    var info = $("customInfo");
+    cls(info, "hidden", !on);
+    info.textContent = on ? customModel.note || "" : "";
+  }
+
+  /* false when the model is too large for the panel's storage; it still works until the panel is closed */
+  function saveCustom() {
+    try { localStorage.setItem("chromaPicker." + VER + "customModel", JSON.stringify(customModel)); return true; }
+    catch (e) { return false; }
+  }
+
+  function loadObjText(name, text) {
+    status("Loading " + name + "…");
+    /* let the status show before the work, which can take a few seconds for a dense mesh */
+    setTimeout(function () {
+      var res;
+      try { res = window.CPObj.load(text); }
+      catch (e) { status(e && e.message ? e.message : "Could not read this .obj"); return; }
+      var note = res.triangles.toLocaleString() + " triangles" +
+        (res.reduced ? " (reduced from " + res.sourceTriangles.toLocaleString() + ")" : "") + ". Use Tip if it lies on its side.";
+      customModel = { name: name, data: res.data, note: note };
+      customRev++;
+      R.setModel("custom", res.data);
+      var kept = saveCustom();
+      beginEdit(); state.shape = "custom"; endEdit();
+      refreshAll(true);
+      status(kept ? "Loaded " + name : "Loaded " + name + " (too large to remember next time)");
+    }, 30);
+  }
+
+  function turnCustom(axis) {
+    if (!customModel) return;
+    customModel.data = window.CPObj.quarterTurn(customModel.data, axis);
+    customRev++;
+    R.setModel("custom", customModel.data);
+    saveCustom();
+    refreshAll(true);
+  }
+
+  window.ChromaPicker = { state: state, ui: ui, refresh: refreshAll, undo: undo, redo: redo, host: host, loadObjText: loadObjText };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();

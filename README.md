@@ -35,12 +35,13 @@ The builds are not code signed, so Windows SmartScreen shows a warning the first
 From top to bottom, the panel is laid out as one workspace:
 
 1. **Tool row** (one slim row at the top). Settings open as popovers that float over the view.
-   - Left: the layout icon opens the scene and material settings (Sphere, Trio, Cube, Asaro or Asaro Low; the two Asaro heads are planar study busts whose facets shadow each other, Asaro Low with fewer, larger planes; sheen, shadow softness, specular, reflectivity, subsurface, depth fog, contrast, toon and chrome). The sliders icon floats the color controls over the bottom of the view. The half circle toggles **True Color**, a split view against the unlit local color on neutral gray (drag the divider or use the ← → keys).
+   - Left: the layout icon opens the scene and material settings (Sphere, Trio, Cube, Asaro or Asaro Low; the two Asaro heads are planar study busts whose facets shadow each other, Asaro Low with fewer, larger planes; **Load OBJ…** to use your own model, see below; sheen, shadow softness, specular, reflectivity, subsurface, depth fog, contrast, toon and chrome). The sliders icon floats the color controls over the bottom of the view. The half circle toggles **True Color**, a split view against the unlit local color on neutral gray (drag the divider or use the ← → keys).
    - Right: the sunrise icon shows or hides the time bar along the bottom of the view (RISE, SUNNY, G.HOUR, SUNSET, NIGHT). The bulb opens the lights: the sun's current time, then the key and rim lights (direction, height, intensity up to 2×, spot, ambient and each light's color). The bookmark opens lighting setups, built in and your own. The globe opens pinned colors, history with undo/redo, the 3D or Classic layout, the canvas handles toggle, brush size, Photoshop sync, copy hex and .ase/.gpl export.
 2. **View**: fills whatever height the panel has. ↻ in its corner resets the camera and lights.
 3. **Targets row**: Shape (the large circle), Sky, Horizon and Ground, then the eyedropper, the lock, and Photoshop's foreground and background colors.
 4. **Color section**, then a **status bar** showing which target is being edited (BASE MODE, SKY MODE, GROUND MODE and so on).
-5. **Responsiveness**: while you drag, the view draws a quick low-resolution frame; the sharp frame is computed in small slices between events and is dropped if anything changes, so dragging never waits on it. The panel re-lays itself out when Photoshop resizes it.
+5. **Your own model**: in the layout popover, **Load OBJ…** opens an `.obj` file, and in the standalone app or a browser you can also drop one on the view. It appears as an extra model button named after the file and is remembered for next time. It is centered, stood on the ground and scaled to fit the view; polygons of any size are triangulated, coincident points welded, facing made consistent and turned outward, and normals worked out from the facets, so the file needs no normals. Meshes over 24,000 triangles are reduced to about that, since the preview is ray traced on the CPU. **Tip 90°** stands up a model exported Z-up (or lying on its side), **Turn 90°** turns it about the vertical, and **Remove** forgets it. Materials and textures in the file are ignored: the model takes the shape color like the built-in ones.
+6. **Responsiveness**: while you drag, the view draws a quick low-resolution frame; the sharp frame is computed in small slices between events and is dropped if anything changes, so dragging never waits on it. The panel re-lays itself out when Photoshop resizes it.
 
 ### Details
 
@@ -110,6 +111,7 @@ You can also install from a terminal with Adobe's UnifiedPluginInstallerAgent (U
 | `js/color.js` | sRGB, HSB, Lab (D50), CMYK, and the picker mode definitions |
 | `js/render.js` | Ray-traced lit preview and palette estimation |
 | `js/model-asaro.js`, `js/model-asaro-low.js` | Packed meshes for the two Asaro heads. `test/pack-model.py` regenerates them from a source `.obj` (see the top of that script) |
+| `js/obj.js` | Loads a user's `.obj` into the same packed form: triangulation, welding, facing, reduction, quarter turns |
 | `js/png.js` | PNG encoder (UXP has no reliable canvas pixel API, so images are data URLs) |
 | `js/bridge.js` | Photoshop foreground/background, clipboard and file saving, with a browser fallback |
 | `js/swatches.js` | `.ase` and `.gpl` writers |

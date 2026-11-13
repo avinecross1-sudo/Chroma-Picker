@@ -1,7 +1,8 @@
 /* Chroma Picker - small CPU ray tracer for the lit preview.
  *
  * Scene: one sphere, a sphere flanked by two smaller ones ("trio"), a cube, or a
- * planar head on a stand ("asaro", or the coarser "asaroLow"), resting on a ground plane. Lighting is an image-based-style environment made
+ * planar head on a stand ("asaro", or the coarser "asaroLow"), or a model the user loaded from an .obj file
+ * ("custom"), resting on a ground plane. Lighting is an image-based-style environment made
  * from three independent colors (sky, horizon, ground) plus a key light and an
  * optional fill light. The environment both forms the backdrop and lights the
  * subject: sky fill from above, ground bounce from below, and a Fresnel sheen
@@ -11,7 +12,7 @@
   "use strict";
   var C = root.CPColor || (typeof require !== "undefined" ? require("./color.js") : null);
   if (!root.CPModelData && typeof require !== "undefined") { require("./model-asaro.js"); require("./model-asaro-low.js"); }
-  var MODELS = root.CPModelData || {};                 /* packed meshes by shape name: "asaro", "asaroLow" */
+  var MODELS = root.CPModelData || {};                 /* packed meshes by shape name: "asaro", "asaroLow", "custom" */
 
   function add(a, b) { return [a[0] + b[0], a[1] + b[1], a[2] + b[2]]; }
   function sub(a, b) { return [a[0] - b[0], a[1] - b[1], a[2] - b[2]]; }
@@ -121,6 +122,7 @@
    * corner so creases such as the eye sockets and the underside of the nose and jaw read darker in ambient light. */
   var meshes = {};
   var MODEL_HEIGHT = 2.42;                             /* scene units from the ground to the top of a head */
+  var MODEL_RADIUS = 0.95;                             /* furthest a model reaches out from its vertical axis (the heads reach 0.88) */
   var SMOOTH = Math.cos(22 * DEG);                     /* facets that meet at less than this angle are blended */
   function isMesh(shape) { return !!MODELS[shape]; }
   function getMesh(shape) { return meshes[shape] || (meshes[shape] = makeMesh(unpackModel(MODELS[shape]))); }
@@ -138,12 +140,19 @@
     return out;
   }
 
-  /* Turns packed model data into triangles in scene units, standing on the ground and centered on the origin. */
+  /* Turns packed model data into triangles in scene units, standing on the ground and centered on the origin.
+   * A model is scaled to the height of a head, or less when it is wide, so that it stays in view as it turns. */
   function unpackModel(data) {
     var pw = base64Words(data.points), tw = base64Words(data.tris), lo = data.lo, hi = data.hi;
-    var s = MODEL_HEIGHT / (hi[1] - lo[1]), pts = [], i, k;
+    var ext = [hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]], reach = 0, pts = [], i, k;
     for (i = 0; i < pw.length; i += 3) {
-      pts.push([(pw[i] / 65535 - 0.5) * (hi[0] - lo[0]) * s, GROUND_Y + pw[i + 1] / 65535 * MODEL_HEIGHT, (pw[i + 2] / 65535 - 0.5) * (hi[2] - lo[2]) * s]);
+      var rx = (pw[i] / 65535 - 0.5) * ext[0], rz = (pw[i + 2] / 65535 - 0.5) * ext[2];
+      reach = Math.max(reach, rx * rx + rz * rz);
+    }
+    var s = Math.min(ext[1] > 0 ? MODEL_HEIGHT / ext[1] : Infinity, reach > 0 ? MODEL_RADIUS / Math.sqrt(reach) : Infinity);
+    if (!isFinite(s)) s = 1;
+    for (i = 0; i < pw.length; i += 3) {
+      pts.push([(pw[i] / 65535 - 0.5) * ext[0] * s, GROUND_Y + pw[i + 1] / 65535 * ext[1] * s, (pw[i + 2] / 65535 - 0.5) * ext[2] * s]);
     }
     /* facet normals weighted by area, gathered per point */
     var faces = [], around = pts.map(function () { return []; });
@@ -161,15 +170,17 @@
         for (var j = 0; j < list.length; j++) if (dot(list[j].unit, f.unit) >= SMOOTH) sum = add(sum, list[j].area);
         return sum;
       });
-      return { a: pts[f.ids[0]], b: pts[f.ids[1]], c: pts[f.ids[2]], vn: vn };
+      return { a: pts[f.ids[0]], b: pts[f.ids[1]], c: pts[f.ids[2]], vn: vn, ids: f.ids };
     });
-    return { tris: tris, standRadius: data.standRadius * s };
+    /* point normals, for occlusion sampled once per point */
+    var pn = around.map(function (list) { var sum = [0, 0, 0]; for (var j = 0; j < list.length; j++) sum = add(sum, list[j].area); return norm(sum); });
+    return { tris: tris, standRadius: data.standRadius * s, pts: pts, pn: pn, pointAO: !!data.pointAO };
   }
 
   function makeMesh(model) {
     var tris = model.tris.map(function (t) {
       var e1 = sub(t.b, t.a), e2 = sub(t.c, t.a);
-      return { a: t.a, e1: e1, e2: e2, n: norm(cross(e1, e2)), vn: t.vn || null, vu: t.vn ? t.vn.map(norm) : null, ao: [1, 1, 1],
+      return { a: t.a, e1: e1, e2: e2, n: norm(cross(e1, e2)), vn: t.vn || null, vu: t.vn ? t.vn.map(norm) : null, ao: [1, 1, 1], ids: t.ids,
         lo: [Math.min(t.a[0], t.b[0], t.c[0]), Math.min(t.a[1], t.b[1], t.c[1]), Math.min(t.a[2], t.b[2], t.c[2])],
         hi: [Math.max(t.a[0], t.b[0], t.c[0]), Math.max(t.a[1], t.b[1], t.c[1]), Math.max(t.a[2], t.b[2], t.c[2])] };
     });
@@ -200,6 +211,22 @@
     /* corner occlusion: how much of the hemisphere over each corner is blocked by nearby surfaces */
     /* a dense mesh gets one sample per triangle instead of one per corner, to keep the first frame quick */
     var dense = tris.length > 1500, N = dense ? 20 : 40, reach = 0.75;
+    /* A loaded model samples once per point instead, shared by the triangles around it, so dense curved meshes
+     * shade smoothly into their creases rather than in a speckle of per-triangle values. */
+    if (dense && model.pointAO) {
+      var pao = model.pts.map(function (pt, id) {
+        var n = model.pn[id], t1 = norm(Math.abs(n[0]) < 0.9 ? cross(n, [1, 0, 0]) : cross(n, [0, 1, 0])), t2 = cross(n, t1);
+        var p = add(pt, mul(n, 2e-3)), blocked = 0, M = 24;
+        for (var i = 0; i < M; i++) {
+          var u = (i + 0.5) / M, ph = i * 2.399963, r = Math.sqrt(u), z = Math.sqrt(1 - u);
+          var h = hitMesh(mesh, p, add(add(mul(t1, r * Math.cos(ph)), mul(t2, r * Math.sin(ph))), mul(n, z)), reach, false);
+          if (h) blocked += 1 - h.t / reach;
+        }
+        return 1 - 0.85 * blocked / M;
+      });
+      tris.forEach(function (t) { t.ao = [pao[t.ids[0]], pao[t.ids[1]], pao[t.ids[2]]]; });
+      return mesh;
+    }
     tris.forEach(function (t) {
       var t1 = norm(t.e1), t2 = cross(t.n, t1);
       var mid = add(t.a, mul(add(t.e1, t.e2), 1 / 3));
@@ -265,6 +292,15 @@
     var h = hitMesh(getMesh(shape), o, d, Infinity, false);
     if (!h) return null;
     var tr = h.tri, p = add(o, mul(d, h.t)), w = 1 - h.u - h.v, n = tr.n, sp = p;
+    var ao = tr.ao[0] * w + tr.ao[1] * h.u + tr.ao[2] * h.v;
+    /* The back of a facet: a loaded model may be an open sheet, or have pieces that face inward. It is lit as if it
+     * faced the camera, and its shadow rays start on the side the camera sees. */
+    if (dot(tr.n, d) > 0) {
+      n = tr.vn ? norm(add(add(mul(tr.vn[0], w), mul(tr.vn[1], h.u)), mul(tr.vn[2], h.v))) : tr.n;
+      if (dot(n, d) > 0) n = mul(n, -1);
+      var gb = mul(tr.n, -1);
+      return { t: h.t, p: p, n: n, gn: gb, sp: add(p, mul(gb, 2e-3)), flat: dot(n, gb) > 0.999, mesh: true, ao: ao };
+    }
     if (tr.vn) {
       n = norm(add(add(mul(tr.vn[0], w), mul(tr.vn[1], h.u)), mul(tr.vn[2], h.v)));
       /* Shadow rays start on the smooth surface the corner normals describe, not on the flat facet. Each corner's
@@ -279,7 +315,7 @@
       sp = add(p, lift);
     }
     /* gn is the true facet normal; sp is where shadow rays start, just off the surface */
-    return { t: h.t, p: p, n: n, gn: tr.n, sp: add(sp, mul(tr.n, 2e-3)), flat: dot(n, tr.n) > 0.999, mesh: true, ao: tr.ao[0] * w + tr.ao[1] * h.u + tr.ao[2] * h.v };
+    return { t: h.t, p: p, n: n, gn: tr.n, sp: add(sp, mul(tr.n, 2e-3)), flat: dot(n, tr.n) > 0.999, mesh: true, ao: ao };
   }
 
   /* Whether the model blocks light direction L from point p; reach is how far away the light is. */
@@ -506,7 +542,7 @@
   /* Main render.
    * S: albedo, sky, horizon, ground (linear rgb), lights: [{ dir, color, intensity, spot }], ambient,
    *    specular, reflectivity, subsurface, sheen, softness, toon, chrome, fog, contrast,
-   *    shape ("sphere" | "trio" | "cube" | "asaro" | "asaroLow"), yaw, pitch, split (null or 0..1), flatAlbedoRgb (sRGB 0..255)
+   *    shape ("sphere" | "trio" | "cube" | "asaro" | "asaroLow" | "custom"), yaw, pitch, split (null or 0..1), flatAlbedoRgb (sRGB 0..255)
    * Returns { rgb: Uint8Array, w, h, palette } */
   /* A render that can run in time slices, so the panel stays responsive while a sharp frame is computed.
    * job.step(ms) renders rows for about ms milliseconds and returns true when finished; job.result() gives the frame. */
@@ -609,7 +645,14 @@
     return project(cam, add(camTarget(S.shape), mul(S.lights[i || 0].dir, S.shape === "trio" ? 2.4 : isMesh(S.shape) ? 2.0 : 1.8)));
   }
 
-  var api = { render: render, renderJob: renderJob, dirFromAngles: dirFromAngles, lightHandle: lightHandle, makeCamera: makeCamera, project: project };
+  /* Adds or replaces a packed model (as made by test/pack-model.py or CPObj.load), or removes it with null. */
+  function setModel(key, data) {
+    delete meshes[key];
+    if (data) MODELS[key] = data; else delete MODELS[key];
+    root.CPModelData = MODELS;
+  }
+
+  var api = { setModel: setModel, hasModel: isMesh, render: render, renderJob: renderJob, dirFromAngles: dirFromAngles, lightHandle: lightHandle, makeCamera: makeCamera, project: project };
   root.CPRender = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })(typeof window !== "undefined" ? window : globalThis);

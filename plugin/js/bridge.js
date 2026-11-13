@@ -115,6 +115,40 @@
       return Promise.resolve(true);
     },
 
+    /* Let the user pick a text file to open. Resolves to { name, text }, or null when cancelled.
+     * In a browser or the desktop app a cancelled picker may simply never resolve, which is harmless here. */
+    openTextFile: function (ext) {
+      if (uxp && uxp.storage && isPS) {
+        var lfs = uxp.storage.localFileSystem, formats = uxp.storage.formats;
+        return lfs.getFileForOpening({ types: [ext] }).then(function (file) {
+          if (!file) return null;
+          return file.read({ format: formats.utf8 }).then(function (text) { return { name: file.name, text: text }; });
+        });
+      }
+      return new Promise(function (resolve, reject) {
+        var input = document.createElement("input");
+        input.type = "file"; input.accept = "." + ext; input.style.display = "none";
+        input.addEventListener("change", function () {
+          var f = input.files && input.files[0];
+          input.remove();
+          if (!f) { resolve(null); return; }
+          bridge.readFile(f).then(resolve, reject);
+        });
+        document.body.appendChild(input);
+        input.click();
+      });
+    },
+
+    /* Reads a dropped or picked browser File as text: { name, text } */
+    readFile: function (f) {
+      return new Promise(function (resolve, reject) {
+        var r = new FileReader();
+        r.onload = function () { resolve({ name: f.name, text: String(r.result) }); };
+        r.onerror = function () { reject(r.error || new Error("Could not read the file")); };
+        r.readAsText(f);
+      });
+    },
+
     /* Pick any color on screen (desktop app and Chromium browsers; not available in UXP).
      * Resolves to a hex string, or null when cancelled. */
     canPickScreen: !isPS && typeof root.EyeDropper === "function",

@@ -30,7 +30,15 @@
           <button data-v="cube">Cube</button>
           <button data-v="asaro" title="Asaro head: a planes-of-the-head bust for studying light on a face">Asaro</button>
           <button data-v="asaroLow" title="Asaro head, low detail: fewer, larger planes">Asaro Low</button>
+          <button data-v="custom" id="customShapeBtn" class="hidden" title="Your model">Custom</button>
         </div>
+        <div class="row model-row">
+          <button id="loadObjBtn" class="small" title="Use your own .obj file as the model">Load OBJ…</button>
+          <button id="tipObjBtn" class="small hidden" title="Tip the model a quarter turn over (stands up a model exported Z-up)">Tip 90°</button>
+          <button id="turnObjBtn" class="small hidden" title="Turn the model a quarter turn about the vertical">Turn 90°</button>
+          <button id="removeObjBtn" class="small hidden" title="Forget the loaded model">Remove</button>
+        </div>
+        <div id="customInfo" class="hint hidden"></div>
         <div class="row"><span class="pop-title">MATERIAL</span></div>
         <div id="materialSliders"></div>
         <div class="row">
@@ -155,6 +163,7 @@
   <script src="js/model-asaro.js"></script>
   <script src="js/model-asaro-low.js"></script>
   <script src="js/render.js"></script>
+  <script src="js/obj.js"></script>
   <script src="js/swatches.js"></script>
   <script src="js/bridge.js"></script>
   <script src="js/main.js"></script>

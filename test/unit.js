@@ -33,4 +33,32 @@ const t0=Date.now(); R.render(S,220,173,2); console.log('HQ render ms', Date.now
 // edge smoothing only touches edge pixels: flat areas match the plain render, and the silhouette gains in-between tones
 S.shape='asaro'; { const a=R.render(S,90,110,1), b=R.render(S,90,110,1,3); let same=0,diff=0; for(let i=0;i<a.rgb.length;i+=3){ if(a.rgb[i]===b.rgb[i]&&a.rgb[i+1]===b.rgb[i+1]&&a.rgb[i+2]===b.rgb[i+2]) same++; else diff++; }
   ok(diff>50&&same>diff,'edge pass changed '+diff+' of '+(same+diff)+' pixels'); ok(a.rgb[0]===b.rgb[0],'corner untouched'); }
+// OBJ import: quads, concave n-gons, negative indices, mixed winding, welding, reduction, lossless quarter turns
+const O=require(path.join(dir,'obj.js'));
+const words=b=>{const x=Buffer.from(b,'base64');const o=[];for(let i=0;i+1<x.length;i+=2)o.push(x.readUInt16LE(i));return o;};
+const vol=d=>{const p=words(d.points),t=words(d.tris);let v=0;const P=i=>[p[i*3],p[i*3+1],p[i*3+2]].map((q,k)=>d.lo[k]+q/65535*(d.hi[k]-d.lo[k]));
+  for(let i=0;i<t.length;i+=3){const a=P(t[i]),b=P(t[i+1]),c=P(t[i+2]);v+=a[0]*(b[1]*c[2]-b[2]*c[1])-a[1]*(b[0]*c[2]-b[2]*c[0])+a[2]*(b[0]*c[1]-b[1]*c[0]);}return v/6;};
+{ const cube='v 0 0 0\nv 0 0 2\nv 0 2 0\nv 0 2 2\nv 2 0 0\nv 2 0 2\nv 2 2 0\nv 2 2 2\nvt 0 0\nvn 0 0 1\n'+
+    'f 1/1/1 2/1/1 4/1/1 3/1/1\nf 5 7 8 6\nf 1 5 6 2\nf 3 4 8 7\nf -8 -6 -2 -4\nf 2 6 8 4\n';  // last-but-one face uses negative indices, and is wound inward
+  const r=O.load(cube); ok(r.triangles===12&&r.points===8,'cube quads '+r.triangles); ok(Math.abs(vol(r.data)-8)<0.01,'cube faces outward, volume '+vol(r.data));
+  // the same cube as triangle soup with every face wound inward: welded and turned outward
+  const soup=O.load(cube.replace(/f (\S+) (\S+) (\S+) (\S+)/g,'f $4 $3 $2\nf $4 $2 $1'));
+  ok(soup.triangles===12&&Math.abs(vol(soup.data)-8)<0.01,'inward cube turned outward '+vol(soup.data));
+  // four quarter turns about either axis give back the same data
+  let d=r.data; for(let i=0;i<4;i++) d=O.quarterTurn(d,'x'); ok(d.points===r.data.points&&d.lo.join()===r.data.lo.join(),'4 tips lossless');
+  d=r.data; for(let i=0;i<4;i++) d=O.quarterTurn(d,'y'); ok(d.points===r.data.points,'4 turns lossless');
+  ok(Math.abs(vol(O.quarterTurn(r.data,'x'))-8)<0.01,'tip keeps facing'); }
+{ // a ten-pointed star prism: its caps are concave and must not be fanned across the notches
+  let v='',f=''; for(const h of [0,1]) for(let k=0;k<10;k++){const r=k%2?0.4:1,a=k*Math.PI/5; v+=`v ${r*Math.cos(a)} ${h} ${r*Math.sin(a)}\n`;}
+  f+='f '+[10,9,8,7,6,5,4,3,2,1].join(' ')+'\nf '+[11,12,13,14,15,16,17,18,19,20].join(' ')+'\n';
+  for(let k=0;k<10;k++){const a=k+1,b=(k+1)%10+1; f+=`f ${a} ${b} ${b+10} ${a+10}\n`;}
+  const r=O.load(v+f), star=10*0.5*1*0.4*Math.sin(Math.PI/5);  // star cap area
+  ok(r.triangles===36,'star tris '+r.triangles); ok(Math.abs(vol(r.data)-star)<0.01,'star volume '+vol(r.data)+' vs '+star); }
+{ // a dense sphere is reduced under the budget and still renders like the other models
+  let v='',f='';const nu=200,nv=100; for(let i=0;i<=nv;i++)for(let j=0;j<nu;j++){const t=Math.PI*i/nv,p=2*Math.PI*j/nu;v+=`v ${Math.sin(t)*Math.cos(p)} ${Math.cos(t)} ${Math.sin(t)*Math.sin(p)}\n`;}
+  for(let i=0;i<nv;i++)for(let j=0;j<nu;j++){const a=i*nu+j+1,b=i*nu+(j+1)%nu+1;f+=`f ${a} ${b+nu} ${a+nu}\nf ${a} ${b} ${b+nu}\n`;}
+  const r=O.load(v+f,{maxTriangles:3000}); ok(r.reduced&&r.triangles<=3000&&r.triangles>1500,'reduced to '+r.triangles); ok(vol(r.data)>3.5,'reduced sphere outward '+vol(r.data));
+  R.setModel('custom',r.data); S.shape='custom'; S.yaw=25; const img=R.render(S,80,100,1),pl=img.palette; ok(lum(pl.hi)>lum(pl.mid)&&lum(pl.mid)>lum(pl.shadow),'custom palette order');
+  R.setModel('custom',null); }
+let threw=null; try{O.load('# nothing\nv 0 0 0\n');}catch(e){threw=e.message;} ok(threw==='No faces found in this file','empty obj message');
 console.log('passed',n,'assertions');
